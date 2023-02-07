@@ -1,0 +1,26 @@
+{
+    "log" : {
+        "file" : ">>/var/www/log/upload.log",
+        "level" : "info"
+    },
+    "upload" : {
+        "path" : "/tmp",
+        "timeout" : {
+            "session" : 60,
+            "file" : 60
+        }
+    },
+    "redis" : {
+        "server" : "172.18.0.1",
+        "port" : 6379
+    },
+    "template" : {
+        "upload-form": "upload-form.tt",
+        "include_path" : "/var/www/include",
+        "absolute" : 1,
+        "interpolate" : 0
+    },
+    "session" : {
+        "cookie_name" : "SessionID"
+    }
+}

@@ -1,0 +1,12 @@
+Tue Feb  7 16:54:57 2023  Rob Lauer  <rlauer6@comcast.net>>
+
+	[BigBang]:
+	* ChangeLog: new
+	* Makefile: new
+	* README.md: new
+	* config/upload.json: new
+	* resources/templates/upload-form.tt: new
+	* src/main/javascript/upload.js: new
+	* src/main/perl/cgi-bin/upload.pl: new
+	* .gitignore: new
+

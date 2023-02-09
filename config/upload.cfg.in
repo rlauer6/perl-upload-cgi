@@ -1,0 +1,31 @@
+[watch_upload]
+dir      = @localstatedir@/spool
+mask     = IN_MOVED_TO | IN_CLOSE_WRITE
+handler  =  Workflow::S3::Uploader
+
+[s3]
+# host     = s3.localhost.localstack.cloud:4566
+# profile  = localstack
+host     = @s3_host@
+profile  = @profile@
+bucket   = @bucket_name@
+
+[log4perl]
+log4perl_conf =<<END_OF_CONF
+log4perl.rootLogger = DEBUG, File
+log4perl.appender.File = Log::Log4perl::Appender::File
+log4perl.appender.File.filename = @apache_site_logdir@/log/cgi-upload.log
+log4perl.appender.File.mode = append
+log4perl.appender.File.layout = PatternLayout
+log4perl.appender.File.layout.ConversionPattern=[%d] (%r/%R) %M:%L - %m%n
+END_OF_CONF
+
+loglevel = info
+
+[global]
+sleep = 0
+block = yes 
+logfile = @localstatedir@/upload-inotify.log
+verbose = yes
+perl5lib = @perl5libdir@
+daemonize = yes 

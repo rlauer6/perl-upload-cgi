@@ -36,6 +36,8 @@ $(function() {
       });
 
       init_upload(file_list);
+
+      $("#upload-btn").attr("disabled", false);
     }
     else {
       $("#upload-btn").attr("disabled", true);

@@ -1,1 +1,14 @@
 **/*.cgi
+**/Makefile
+config.log
+config.status
+configure
+config/inotify.service
+**/*.cfg
+config/*.json
+autotools/missing
+autotools/install-sh
+**/Makefile.in
+aclocal.m4
+autom4te.cache/
+perl-deps.yaml

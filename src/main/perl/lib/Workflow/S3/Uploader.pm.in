@@ -1,0 +1,220 @@
+package Workflow::S3::Uploader;
+
+# AWS S3 file uploader handler for inotify events
+
+use strict;
+use warnings;
+
+use Amazon::Credentials;
+use Amazon::S3;
+use Config::IniFiles;
+use Carp;
+use Data::Dumper;
+use English qw(-no_match_vars);
+use File::HomeDir;
+use Getopt::Long qw(:config no_ignore_case);
+use Log::Log4perl;
+use Log::Log4perl::Level;
+use Linux::Inotify2;
+
+use Readonly;
+
+Readonly::Hash our %LOG4PERL_LEVELS => (
+  error => $ERROR,
+  warn  => $WARN,
+  info  => $INFO,
+  debug => $DEBUG,
+  trace => $TRACE,
+);
+
+use parent qw(Class::Accessor::Fast);
+
+__PACKAGE__->follow_best_practice;
+__PACKAGE__->mk_accessors(
+  qw(
+    credentials
+    config
+    bucket_name
+    bucket
+    host
+    name
+    fullname
+    mask
+    logger
+    profile
+    s3
+  )
+);
+
+Readonly our $TRUE  => 1;
+Readonly our $FALSE => 0;
+
+caller or __PACKAGE__->main();
+
+########################################################################
+sub new {
+########################################################################
+  my ( $class, $config ) = @_;
+
+  if ( $config && !ref $config ) {
+    if ( -e $config ) {
+      $config = Config::IniFiles->new( -file => $config );
+    }
+  }
+
+  my $self = $class->SUPER::new( { config => $config } );
+
+  my $profile = $config->val( s3 => 'profile' );
+  $self->set_profile($profile);
+
+  my $bucket_name = $config->val( s3 => 'bucket' );
+  $self->set_bucket_name($bucket_name);
+
+  my $host = $config->val( s3 => 'host' );
+  $self->set_host($host);
+
+  my $level = $config->val( log4perl => 'loglevel' );
+  $level //= 'info';
+
+  my $log4perl_conf = $config->val( log4perl => 'log4perl_conf' );
+
+  my $logger = eval {
+    if ($log4perl_conf) {
+      Log::Log4perl->init( \$log4perl_conf );
+
+      $self->set_logger( Log::Log4perl->get_logger );
+
+      return $self->get_logger();
+    }
+  };
+
+  if ( !$logger || $EVAL_ERROR ) {
+    die "error initializing logger:\n$EVAL_ERROR";
+  }
+
+  $logger->level( $LOG4PERL_LEVELS{$level} );
+
+  my $credentials = Amazon::Credentials->new(
+    { profile => $profile,
+      debug   => $ENV{DEBUG} ? $TRUE : $FALSE,
+      logger  => $logger,
+    }
+  );
+
+  $self->set_credentials($credentials);
+
+  my $s3 = Amazon::S3->new(
+    { credentials => $credentials,
+      debug       => $ENV{DEBUG} ? $TRUE : $FALSE,
+      host        => $host,
+      logger      => $self->get_logger(),
+    }
+  );
+
+  $self->set_s3($s3);
+
+  $self->set_bucket( $s3->bucket( { bucket => $self->get_bucket_name } ) );
+
+  return $self;
+}
+
+########################################################################
+sub handler {
+########################################################################
+  my ( $self, $event ) = @_;
+
+  return
+    if $event->mask != IN_CLOSE_WRITE;
+
+  $self->get_logger->info( sprintf 'event received for %s',
+    $event->fullname );
+
+  my $key = sprintf '/uploads/%s', $event->name;
+
+  $self->get_bucket->add_key_filename( $key, $event->fullname );
+
+  return;
+}
+
+# mock's to simulate event in main()
+
+########################################################################
+sub name {
+########################################################################
+  return shift->get_name;
+}
+
+########################################################################
+sub mask {
+########################################################################
+  return shift->get_mask;
+}
+
+########################################################################
+sub fullname {
+########################################################################
+  return shift->get_fullname;
+}
+
+########################################################################
+sub main {
+########################################################################
+
+  # poor man's way to upload a file with a key to the bucket defined
+  # in the configuration file you provided on the command line while
+  # testing ...
+
+  # you did something like this:
+
+  #  perl -I $HOME/lib/perl5 Workflow/S3/Uploader.pm \
+  #     --config=$HOME/workflow/config.d/upload.cfg \
+  #     --key=config/upload.config
+  #     ~/workflow/config.d/upload.cfg
+
+  use Getopt::Long;
+  use File::Basename qw(basename);
+
+  my %options;
+
+  GetOptions( \%options, 'config=s', 'key=s' );
+
+  my $handler = __PACKAGE__->new( $options{config} );
+
+  my $file = shift @ARGV;
+  my $key  = $options{key} // basename $file;
+
+  # simulate an event...
+  $handler->set_fullname($file);
+  $handler->set_name($key);
+  $handler->set_mask(IN_CLOSE_WRITE);
+
+  $handler->handler($handler);
+
+  return;
+}
+
+1;
+
+__END__
+
+## no critic (RequirePodSections)
+
+__END__
+
+=pod
+
+=head1 NAME
+
+=head1 SYNOPSIS
+
+=head1 DESCRIPTION
+
+=head1 METHODS AND SUBROUTINES
+
+=head1 SEE ALSO
+
+=head1 AUTHOR
+
+Rob Lauer - <rlauer@usgn.net>
+
+=cut

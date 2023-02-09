@@ -1,26 +1,26 @@
 {
     "log" : {
-        "file" : ">>/var/www/log/upload.log",
+        "file" : ">>@apache_site_logdir@/upload.log",
         "level" : "info"
     },
     "upload" : {
-        "path" : "/tmp",
+        "path" : "@apache_site_spooldir@/spool",
         "timeout" : {
             "session" : 60,
             "file" : 60
         }
     },
     "redis" : {
-        "server" : "172.18.0.1",
-        "port" : 6379
+        "server" : "@redis_server@",
+        "port" : "@redis_port@"
     },
     "template" : {
         "upload-form": "upload-form.tt",
-        "include_path" : "/var/www/include",
+        "include_path" : "@apache_site_includedir@",
         "absolute" : 1,
         "interpolate" : 0
     },
     "session" : {
-        "cookie_name" : "SessionID"
+        "cookie_name" : "@cookie_name@"
     }
 }

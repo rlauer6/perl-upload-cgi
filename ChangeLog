@@ -1,5 +1,50 @@
-Tue Feb  7 16:54:57 2023  Rob Lauer  <rlauer6@comcast.net>>
+Thu Feb  9 10:55:46 2023  Rob Lauer  <rlauer6@comcast.net>
 
+	[autoconfiscation]:
+	* Makefile.am: new
+	* VERSION: new
+	* autotools/ads_PERL_INCLUDES.m4: new
+	* autotools/ads_PERL_MODULE.m4: new
+	* autotools/ads_PROG_PERL.m4: new
+	* autotools/am_build_mode.m4: new
+	* autotools/am_perlcritic_mode.m4: new
+	* autotools/apache_config.m4: new
+	* autotools/ax_am_conditional_example.m4: new
+	* autotools/ax_deps_check.m4: new
+	* autotools/ax_distcheck_hack.m4: new
+	* autotools/ax_requirements_check.m4: new
+	* bootstrap: new
+	* config/Makefile.am: new
+	* config/inotify.service.in: new
+	* config/upload.cfg.in: new
+	* configure.ac: new
+	* includes/apache-directories.inc: new
+	* includes/directories.inc: new
+	* includes/perl-build.inc: new
+	* includes/perl-modules.inc: new
+	* includes/perlcritic.inc: new
+	* resources/Makefile.am: new
+	* src/Makefile.am: new
+	* src/main/Makefile.am: new
+	* src/main/bash/Makefile.am: new
+	* src/main/bash/bin/Makefile.am: new
+	* src/main/images/Makefile.am: new
+	* src/main/javascript/Makefile.am: new
+	* src/main/perl/Makefile.am: new
+	* src/main/perl/bin/Makefile.am: new
+	* src/main/perl/cgi-bin/Makefile.am: new
+	* src/main/perl/lib/Makefile.am: new
+	* src/main/perl/lib/Workflow/S3/Uploader.pm.i: new
+	* config/upload.json -> config/upload.json.in
+	* perl-upload-cgi-1.png -> src/main/images/perl-upload-cgi-1.png
+	* perl-upload-cgi-2.png -> src/main/images/perl-upload-cgi-2.png
+	* src/main/perl/cgi-bin/upload.pl -> src/main/perl/cgi-bin/upload.pl.in
+
+	[bugs]:
+	* src/main/javascript/upload.js
+	- enable upload button after initializing upload
+
+Tue Feb  7 16:54:57 2023  Rob Lauer  <rlauer6@comcast.net>
 	[BigBang]:
 	* ChangeLog: new
 	* Makefile: new
@@ -9,4 +54,3 @@ Tue Feb  7 16:54:57 2023  Rob Lauer  <rlauer6@comcast.net>>
 	* src/main/javascript/upload.js: new
 	* src/main/perl/cgi-bin/upload.pl: new
 	* .gitignore: new
-

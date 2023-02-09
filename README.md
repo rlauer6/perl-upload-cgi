@@ -5,9 +5,9 @@ Redis to monitor file uploads.
 
 The project also demonstrates the use of Bootstrap progress bars.
 
-![screenshot](perl-upload-cgi-1.png)
+![screenshot](src/main/images/perl-upload-cgi-1.png)
 
-![screenshot](perl-upload-cgi-2.png)
+![screenshot](src/main/images/perl-upload-cgi-2.png)
 
 # Problem
 

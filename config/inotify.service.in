@@ -1,0 +1,14 @@
+[Unit]
+Description=Linux::Inotify2 handler
+After=network.target
+
+[Service]
+Type=forking
+user=root
+WorkingDirectory=/root
+ExecStart=perl -I @perl5libdir@  @bindir@/inotify.pl --config=@sysconfdir@/workflow/config.d/upload.cfg
+Restart=always
+ExecReload=kill -HUP $MAINPID
+
+[Install]
+WantedBy=multi-user.target

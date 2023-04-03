@@ -1,7 +1,32 @@
-#!/usr/bin/env perl
+package Apache::Bootstrap::Upload;
+
+# mod_perl handler for uploading files
 
 use strict;
 use warnings;
+
+# make them available, but don't import them
+use Apache2::Const -compile => qw(
+  HTTP_UNAUTHORIZED
+  HTTP_FORBIDDEN
+  HTTP_BAD_REQUEST
+  NOT_FOUND OK
+  SERVER_ERROR
+  FORBIDDEN
+  DECLINED
+  REDIRECT
+);
+
+use constant {
+  BAD_REQUEST       => Apache2::Const::HTTP_BAD_REQUEST,
+  DECLINED          => Apache2::Const::DECLINED,
+  FORBIDDEN         => Apache2::Const::FORBIDDEN,
+  HTTP_UNAUTHORIZED => Apache2::Const::HTTP_UNAUTHORIZED,
+  NOT_FOUND         => Apache2::Const::NOT_FOUND,
+  OK                => Apache2::Const::OK,
+  REDIRECT          => Apache2::Const::REDIRECT,
+  SERVER_ERROR      => Apache2::Const::SERVER_ERROR,
+};
 
 use Carp;
 use CGI;
@@ -51,12 +76,14 @@ Readonly::Hash our %HTTP_CODES => (
   SERVER_ERROR => 500,
 );
 
-our $VERSION = '0.001';
+our $VERSION = '@PACKAGE_VERSION@'; ## no critic (RequireInterpolation)
 
 {
   my $config;
 
+########################################################################
   sub get_config {
+########################################################################
     my ($program_name) = @_;
 
     return $config
@@ -68,52 +95,110 @@ our $VERSION = '0.001';
   }
 }
 
+{
+  my $redis;
+
+########################################################################
+  sub get_redis_handler {
+########################################################################
+    my ( $r, $config ) = @_;
+
+    #    return $redis
+    #      if $redis;
+
+    $r->log->info( 'initializing Redis connection:', $PID );
+
+    my $redis = eval {
+      return Redis->new(
+        server => sprintf '%s:%s',
+        @{ $config->{redis} }{qw(server port)}
+      );
+    };
+
+    if ( !$redis || $EVAL_ERROR ) {
+      $r->log_error( 'could not initialize redis client: ' . $EVAL_ERROR );
+    }
+
+    return $redis;
+  }
+}
+
+########################################################################
+sub set_apache_error {
+########################################################################
+  my ( $r, $error ) = @_;
+
+  $r->status($error);
+
+  return $error;
+}
+
+{
+  my $logger;
+
+########################################################################
+  sub init_logger {
+########################################################################
+    my ( $r, $config ) = @_;
+
+    return $logger
+      if $logger;
+
+    $r->log->info( 'initializing Log::Log4perl logger:', $PID );
+
+    Log::Log4perl->easy_init(
+      { level  => $LOG_LEVELS{ $config->get_log->{level} // 'info' },
+        layout => $config->get_log->{layout} // '[%d] (%r/%R) %M:%L - %m%n',
+        file   => $config->get_log->{file},
+      }
+    );
+
+    $logger = Log::Log4perl->get_logger();
+
+    return $logger;
+  }
+}
+
 ########################################################################
 sub handler {
 ########################################################################
   my ($r) = @_;
 
-  my $config = get_config($PROGRAM_NAME);
+  my $config = get_config('upload.cgi');
 
-  Log::Log4perl->easy_init(
-    { level  => $LOG_LEVELS{ $config->get_log->{level} // 'info' },
-      layout => $config->get_log->{layout} // '[%d] (%r/%R) %M:%L - %m%n',
-      file   => $config->get_log->{file},
-    }
-  );
+  return set_apache_error( $r, SERVER_ERROR )
+    if !$config;
 
-  my $logger = Log::Log4perl->get_logger();
+  my $logger = init_logger( $r, $config );
 
-  $logger->info( Dumper($config) );
+  $logger->debug( Dumper($config) );
 
-  my $redis = eval {
-    return Redis->new(
-      server => sprintf '%s:%s',
-      @{ $config->{redis} }{qw(server port)}
-    );
-  };
+  my $redis = get_redis_handler( $r, $config );
 
-  if ( !$redis || $EVAL_ERROR ) {
-    $logger->error( 'could not initialize redis client: ' . $EVAL_ERROR );
-    exit http_error('SERVER_ERROR');
-  }
+  return set_apache_error(SERVER_ERROR)
+    if !$redis;
 
-  if ( $ENV{REQUEST_METHOD} eq 'GET' ) {
+  $r->log->info( "method: ", $r->method );
+  $r->log->info( "uri: ",    $r->uri );
+
+  if ( $r->method eq 'GET' ) {
     api_request(
-      config => $config,
+      $r,
       redis  => $redis,
-      logger => $logger
+      config => $config,
+      logger => $logger,
     );
   }
   else {
     upload(
-      config => $config,
+      $r,
       redis  => $redis,
-      logger => $logger
+      config => $config,
+      logger => $logger,
     );
   }
 
-  exit 0;
+  return OK;
 }
 
 ########################################################################
@@ -134,35 +219,59 @@ sub http_error {
 ########################################################################
 sub api_request {
 ########################################################################
-  my %args = @_;
+  my ( $r, %args ) = @_;
 
-  my ( $redis, $logger, $config ) = @args{qw(redis logger config)};
+  my $redis  = $args{redis};
+  my $logger = $args{logger};
+  my $config = $args{config};
 
   my $cgi = CGI->new;
 
   my $session_id = eval { get_session_id($config) // uuid(); };
 
   if ( !$session_id || $EVAL_ERROR ) {
-    http_error('UNAUTHORIZED');
-    exit $FAILURE;
+    return set_apache_error(HTTP_UNAUTHORIZED);
   }
 
-  my $action = $cgi->param('action');
-  $action //= 'show-form';
+  my $uri = $r->uri;
 
-  $logger->info( Dumper( [ 'action', $action, 'session_id', $session_id ] ) );
+  my $action = $cgi->param('action');
+  $action //= 'show';
+
+  my $extra = $EMPTY;
+
+  if ( $uri =~ /^\/upload\/(.*?)$/xsm ) {
+    $extra = $1;
+  }
+
+  # /upload/status
+  if ( $extra eq 'status' ) {
+    $action = 'status';
+  }
+
+  $logger->info(
+    Dumper(
+      [ 'uri'        => $uri,
+        'action'     => $action,
+        'session_id' => $session_id
+      ]
+    )
+  );
 
   my %request = (
-    'initialize-upload' => \&initialize,
-    'fetch-status'      => \&status,
-    'show-form'         => \&show_form,
+    'initialize' => \&initialize,
+    'finalize'   => \&finalize,
+    'status'     => \&status,
+    'clear'      => \&clear_cache,
+    'show'       => \&show_form,
   );
 
   if ( !$request{$action} ) {
-    exit http_error('BAD_REQUEST');
+    return set_apache_error(BAD_REQUEST);
   }
 
   return $request{$action}->(
+    $r,
     %args,
     session_id => $session_id,
     cgi        => $cgi,
@@ -172,10 +281,13 @@ sub api_request {
 ########################################################################
 sub status {
 ########################################################################
-  my (%args) = @_;
+  my ( $r, %args ) = @_;
 
-  my ( $redis, $session_id, $cgi, $logger )
-    = @args{qw(redis session_id cgi logger)};
+  my $redis      = $args{redis};
+  my $logger     = $args{logger};
+  my $config     = $args{config};
+  my $cgi        = $args{cgi};
+  my $session_id = $args{session_id};
 
   my $file_list = decode_json( $redis->get($session_id) // '{}' );
 
@@ -199,16 +311,48 @@ sub status {
 
   $logger->info( Dumper( \%status ) );
 
-  return output_json( \%status );
+  return output_json( $r, \%status );
+}
+
+########################################################################
+sub clear_cache {
+########################################################################
+  my ( $r, %args ) = @_;
+
+  my $redis      = $args{redis};
+  my $session_id = $args{session_id};
+
+  my $file_list = decode_json( $redis->get($session_id) // '{}' );
+
+  my $status = eval {
+    if ( keys %{$file_list} ) {
+      foreach ( keys %{$file_list} ) {
+        $redis->del($_);
+      }
+    }
+
+    $redis->del($session_id);
+
+    return { success => $session_id };
+  };
+
+  if ( $status || $EVAL_ERROR ) {
+    $status = { error => $EVAL_ERROR || 'unknown error' };
+  }
+
+  return output_json( $r, $status );
 }
 
 ########################################################################
 sub initialize {
 ########################################################################
-  my (%args) = @_;
+  my ( $r, %args ) = @_;
 
-  my ( $redis, $cgi, $session_id, $logger, $config )
-    = @args{qw(redis cgi session_id logger config)};
+  my $redis      = $args{redis};
+  my $logger     = $args{logger};
+  my $config     = $args{config};
+  my $cgi        = $args{cgi};
+  my $session_id = $args{session_id};
 
   my $file_map = {};
 
@@ -263,21 +407,26 @@ sub initialize {
 
   $logger->info( sub { return Dumper( [$file_map] ) } );
 
-  return output_json($file_map);
+  return output_json( $r, $file_map );
 }
 
 ########################################################################
 sub upload {
 ########################################################################
-  my %args = @_;
+  my ( $r, %args ) = @_;
 
-  my ( $redis, $logger, $config ) = @args{qw(redis logger config)};
+  $r->log->info( Dumper( [ args => \%args ] ) );
+
+  my $redis  = $args{redis};
+  my $logger = $args{logger};
+  my $config = $args{config};
 
   my $session_id = get_session_id($config);
 
   if ( !$session_id ) {
-    print "Status: 401 Unauthorized\n\n";
-    return;
+    $r->status(FORBIDDEN);
+
+    return FORBIDDEN;
   }
 
   my @start_time = gettimeofday();
@@ -291,7 +440,8 @@ sub upload {
       start_time => $start_time_microseconds,
       session_id => $session_id,
       config     => $config,
-    }
+    },
+    $FALSE,
   );
 
   my $status = serialize( $redis->get($session_id) || {} );
@@ -334,10 +484,7 @@ sub upload {
     $file_info = serialize( { error => 'not sure what happened here?' } );
   }
 
-  print "Content-type: application/json\n\n";
-  print "$file_info\n";
-
-  return;
+  return output_json( $r, $file_info );
 }
 
 ########################################################################
@@ -373,15 +520,14 @@ sub hook {
 ########################################################################
   my ( $filename, $buffer, $bytes_read, $data ) = @_;
 
-  my $logger = $data->{logger};
-  my $redis  = $data->{redis};
-  my $config = $data->{config};
-
+  my $logger     = $data->{logger};
+  my $redis      = $data->{redis};
+  my $config     = $data->{config};
   my $session_id = $data->{session_id};
 
   my $file_id = md5_hex( $filename, $session_id );
 
-  $logger->trace("fetching $file_id");
+  $logger->info("fetching $file_id");
 
   my $status = $redis->get($file_id) || '{}';
 
@@ -434,7 +580,10 @@ sub expire_upload {
 ########################################################################
   my (%args) = @_;
 
-  my ( $redis, $config, $key, $type ) = @args{qw(redis config key type)};
+  my $redis  = $args{redis};
+  my $config = $args{config};
+  my $key    = $args{key};
+  my $type   = $args{type};
 
   my $timeout = time + $config->get_upload->{timeout}->{$type};
 
@@ -444,21 +593,27 @@ sub expire_upload {
 ########################################################################
 sub output_json {
 ########################################################################
-  my ($json) = @_;
+  my ( $r, $json ) = @_;
 
   if ( ref $json ) {
     $json = encode_json($json);
   }
 
-  return print "Content-type: application/json\n\n$json";
+  $r->content_type('application/json');
+  $r->send_http_header;
+
+  print $json;
+
+  return OK;
 }
 
 ########################################################################
 sub show_form {
 ########################################################################
-  my (%args) = @_;
+  my ( $r, %args ) = @_;
 
-  my ( $session_id, $config ) = @args{qw(session_id config)};
+  my $session_id = $args{session_id};
+  my $config     = $args{config};
 
   my $tt = Template->new(
     { INCLUDE_PATH => $config->get_template->{include_path},
@@ -478,25 +633,20 @@ sub show_form {
   my $expiry_date
     = time2str( '%a, %d-%b-%Y %H:%M:%S GMT', time + 60 * 60 * 15 );
 
-  print "Content-Type: text/html\n";
-
-  print bake_cookie(
-    _user    => 'rob',
-    SameSite => $EMPTY,
-    Secure   => undef,
-    path     => $SLASH,
-    expires  => $expiry_date,
-  );
-
   my $cookie_name = $config->get_session->{cookie_name};
 
-  print bake_cookie(
+  my %headers_out = $r->headers_out;
+
+  $headers_out{'Set-Cookie'} = bake_cookie(
     $cookie_name => $session_id,
     SameSite     => $EMPTY,
     Secure       => undef,
     path         => $SLASH,
     expires      => $expiry_date,
   );
+
+  $r->content_type('text/html');
+  $r->send_http_header;
 
   return print "\n$content";
 }
@@ -514,12 +664,13 @@ sub _get_config {
 ########################################################################
   my ($config_name) = @_;
 
-  my ( $name, $path ) = fileparse( $config_name, qr{[.][^.]+$}xsm );
+  my ( $name, $path, $ext ) = fileparse( $config_name, qr{[.][^.]+$}xsm );
 
-  local $RS = undef;
   my $config_path = $ENV{CONFIG_PATH} || $CONFIG_PATH;
 
   my $config_file = $CONFIG_PATH . "/$name.json";
+
+  local $RS = undef;
 
   open my $fh, '<', $config_file
     or croak "could not open $config_file";
@@ -531,14 +682,14 @@ sub _get_config {
   croak "invalid configuration file\n$EVAL_ERROR"
     if !$config;
 
-  bless $config, 'MyConfig';
+  bless $config, 'Apache::Upload::Config';
 
   {
     no strict 'refs'; ## no critic (ProhibitNoStrict)
 
     use Class::Accessor::Fast;
 
-    @{'MyConfig::ISA'} = qw(Class::Accessor::Fast);
+    @{'Apache::Upload::Config::ISA'} = qw(Class::Accessor::Fast);
   }
 
   $config->follow_best_practice();
@@ -565,10 +716,8 @@ sub bake_cookie {
     map { defined $_->[1] ? $_->[0] . $EQUALS_SIGN . $_->[1] : $_->[0] }
     pairs @cookie;
 
-  return "Set-Cookie: $cookie\n";
+  return $cookie;
 }
-
-handler();
 
 1;
 

@@ -1,10 +1,103 @@
+# -*- mode: makefile; -*-
+# This is a Makefile rule use tabs!
+
+perlrun = $(PERL)
+
+if RPM_BUILD_MODE
+perlwc = \# 
+else
+perlwc = $(perlrun)
+endif
+
+@do_subst_command@
+
+# colon separated list extra paths 
+ax_perl5_extra_includes  = $(ax_perl5_extra_includes)
+
+# contains a list of paths of form -I {path} derived from above
+# use in PERLINCLUDE below
+ax_perl5_extra_includes_opt = $(ax_perl5_extra_includes_opt)
+
+if USING_PERL5_EXTRA_INCLUDES
+PERL5_EXTRA_INCLUDES = $(ax_perl5_extra_includes_opt)
+else
+endif
+
+PERLINCLUDE = \
+    -I $(builddir) \
+    -I $(builddir)/../lib \
+    $(PERL5_EXTRA_INCLUDES) \
+    -I $(perl5libdir)
+
+%.pm: %.pm.in
+	test -d "$$(dirname "$@")" || $(INSTALL) -d "$$(dirname "$@")"
+	$(do_subst) $< > $@
+	>&2 echo "$@"
+	$(perlwc) -wc $(PERLINCLUDE)  -M$$(echo $@ | perl -np -e 's/\//\:\:/g; s/\.pm$$//;') -e 1 || { rm $@ && exit 1; }
+
+%.pl: %.pl.in
+	test -d "$$(dirname "$@")" || $(INSTALL) -d "$$(dirname "$@")"
+	$(do_subst) $< > $@
+	>&2 echo "WARNING: $@"
+	$(perlwc) -wc $(PERLINCLUDE) $@ || { rm $@ && exit 1; }
+
+define MAN_PAGE_BUILD_RECIPE
+	target_name="$@";\
+	tname=$$(echo "$${target_name}" | sed -e 's/\.1man$$//') ;\
+	"$(POD2MAN)"  $< \
+	--center="$(PACKAGE)" \
+	--name="$${tname}" \
+	--release=$(PACKAGE)-$(VERSION) \
+	--section=1man > "$${target_name}" || true
+endef
+
+%.1man : %.pm
+	$(MAN_PAGE_BUILD_RECIPE)
+
+%.1man : %.pl
+	$(MAN_PAGE_BUILD_RECIPE)
+
+%.1man : %.cgi
+	$(MAN_PAGE_BUILD_RECIPE)
+
+%.md : %.pm
+	$(POD2MARKDOWN) < $< >$@
+
+# +--------------------------------------------+
+# | .                                          |
+# +--------------------------------------------+
+
 PERLMODULES = 
 
 GPERLMODULES = $(PERLMODULES:.pm.in=.pm)
 
 # +--------------------------------------------+
+# | Workflow                                   |
+# +--------------------------------------------+
+
+WORKFLOWMODULES = 
+
+GWORKFLOWMODULES = $(WORKFLOWMODULES:.pm.in=.pm)
+
+perl5lib_workflowdir = $(perl5libdir)/Workflow
+perl5lib_workflow_DATA = $(GWORKFLOWMODULES)
+
+# +--------------------------------------------+
+# | Apache/Bootstrap                           |
+# +--------------------------------------------+
+
+APACHEBOOTSTRAPMODULES = \
+    Apache/Bootstrap/Upload.pm.in
+
+GAPACHEBOOTSTRAPMODULES = $(APACHEBOOTSTRAPMODULES:.pm.in=.pm)
+
+perl5lib_apachebootstrapdir = $(perl5libdir)/Apache/Bootstrap
+perl5lib_apachebootstrap_DATA = $(GAPACHEBOOTSTRAPMODULES)
+
+# +--------------------------------------------+
 # | Workflow/S3                                |
 # +--------------------------------------------+
+
 WORKFLOWS3MODULES = \
     Workflow/S3/Uploader.pm.in
 
@@ -13,24 +106,7 @@ GWORKFLOWS3MODULES = $(WORKFLOWS3MODULES:.pm.in=.pm)
 perl5lib_workflows3dir = $(perl5libdir)/Workflow/S3
 perl5lib_workflows3_DATA = $(GWORKFLOWS3MODULES)
 
-# +--------------------------------------------+
-# | build rule for Workflow/S3/Uploader.pm.in  |
-# +--------------------------------------------+
-Workflow/S3/Uploader.pm: % : %.in 
-	$(BUILD_PERL_MODULE_RULE)
-
-
-# +--------------------------------------------+
-# | Workflow                                   |
-# +--------------------------------------------+
-WORKFLOWMODULES = 
-    
-GWORKFLOWMODULES = $(WORKFLOWMODULES:.pm.in=.pm)
-
-perl5lib_workflowdir = $(perl5libdir)/Workflow
-perl5lib_workflow_DATA = $(GWORKFLOWMODULES)
-
 ALLMODULES = \
     $(PERLMODULES) \
-    $(WORKFLOWS3MODULES) \
-    $(WORKFLOWMODULES)
+    $(WORKFLOWMODULES) \
+    $(WORKFLOWS3MODULES)

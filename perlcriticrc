@@ -1,0 +1,33 @@
+# need this to enable Community overrides
+exclude = Freenode
+
+[-ValuesAndExpressions::ProhibitConstantPragma]
+[-Miscellanea::ProhibitUselessNoCritic]
+[-ErrorHandling::RequireCarping]
+[-Modules::RequireVersionVar]
+[-NamingConventions::Capitalization]
+
+[Subroutines::RequireArgUnpacking]
+short_subroutine_statements = 2
+allow_subscripts = 1
+
+[-InputOutput::RequireCheckedClose]
+
+[InputOutput::RequireCheckedSyscalls]
+functions = :defaults
+exclude_functions = print close
+ 
+[ControlStructures::ProhibitPostfixControls]
+flowcontrol=skip carp cluck confess croak die exit goto warn LOGCROAK LOGCLUCK LOGCARP LOGCONFESS LOGDIE LOGEXIT LOGWARN
+
+[Documentation::RequirePodSections]
+lib_sections    = SYNOPSIS | DESCRIPTION | METHODS AND SUBROUTINES | AUTHOR
+script_sections = SYNOPSIS | DESCRIPTION | AUTHOR
+
+[-Documentation::PodSpelling]
+
+[Community::PreferredAlternatives]
+allowed_modules = JSON Readonly
+
+[CodeLayout::RequireTidyCode]
+perltidyrc = /home/rclauer/.perltidyrc

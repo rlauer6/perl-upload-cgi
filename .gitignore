@@ -12,3 +12,7 @@ autotools/install-sh
 aclocal.m4
 autom4te.cache/
 perl-deps.yaml
+src/main/**/*.pl
+src/main/**/*.pm
+**/*.1man
+

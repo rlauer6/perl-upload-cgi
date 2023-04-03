@@ -1,0 +1,17 @@
+Amazon::Credentials
+Amazon::S3
+Class::Accessor::Fast
+Config::IniFiles
+Data::UUID
+Date::Format
+File::HomeDir
+JSON
+Linux::Inotify2
+List::Util
+Log::Log4perl
+Log::Log4perl::Level
+Number::Bytes::Human
+Readonly
+Redis
+Template
+Workflow::Inotify

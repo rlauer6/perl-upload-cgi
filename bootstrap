@@ -1,50 +1,47 @@
 #!/usr/bin/env bash
 # -*- mode: sh; -*
 
-########################################################################
 function _bump {
-########################################################################
     version=$(mktemp)
 
-    eval $(echo perl -ne "'my \$p=$1; my @v=split /\./; \$v[2]=0 if \$p == 1; \$v[1] = \$v[2] = 0 unless \$p; \$v[\$p]++; print join(\".\", @v);'" VERSION) > $version
-
-    test -e "$version" && mv $version VERSION
-
-    cat VERSION
+    # if it's M.m.r or M.rr
     
+    eval $(echo perl -ne "'chomp; \$p=$1; \$r=\$_;  @v=split /\./, $r; if ( @v == 3) { \$v[2]=0 if \$p == 1; \$v[1] = \$v[2] = 0 unless \$p; \$v[\$p]++; print join(\".\", @v);}else{printf q{%5.2f}, \$r+.01;}'" VERSION) > $version
+    
+    test -e "$version" && mv $version VERSION
+    echo -n "rebuilding for VERSION: $(cat VERSION)..."
+
+    if test -e "config.log"; then
+        options=$(grep  '\$ ./configure' config.log | sed 's/\s*\$ \.\/configure//';)
+    fi
+
     if test -x bootstrap; then
-        ./bootstrap
-        ./configure
+        if ./bootstrap && ./configure $options; then
+            make clean
+            make
+        fi
     fi
 }
 
-########################################################################
 function bump {
-########################################################################
     [ "$1" = "major" ] && _bump 0 && exit;
     [ "$1" = "minor" ] && _bump 1 && exit;
     [ "$1" = "release" ] && _bump 2 && exit;
 }
 
-########################################################################
 function bump_major {
-########################################################################
     bump 0
 }
 
-########################################################################
 function bump_minor {
-########################################################################
     bump 1
 }
 
-########################################################################
 function bump_release {
-########################################################################
     bump 2
 }
 
-########################################################################
+
 # Usage:
 #   bootstrap [ AUTORECONF_ARG ... ]
 #
@@ -56,12 +53,8 @@ function bump_release {
 #
 # Example 3:
 #   $ ./bootstrap --debug
-# 
-# Example 4:
-#   $ ./bootstrap bump major|minor|release
 
 declare -r PROG='bootstrap'
-
 if [ "$1" = "bump" ]; then
     bump $2
     exit
@@ -102,31 +95,31 @@ test -n "$DEBUG" && set -x
 # version number suffixes, so the default names, such as 'aclocal' won't work.
 AM_VERSION=$(automake --version | grep "^automake" | awk '{print $4}' | sed 's/^\([0-9]\+\.[0-9]\+\)\.[0-9]\+$/\1/;')
 
-if test "$(command -v aclocal)"; then
+if test "$(which aclocal)"; then
     export ACLOCAL="aclocal"
-elif test "$(command -v aclocal-$AM_VERSION)"; then
+elif test "$(which aclocal-$AM_VERSION)"; then
     export ACLOCAL="aclocal-$AM_VERSION"
 else
     echo "no aclocal found"
     exit 1
 fi
 
-if test "$(command -v automake)"; then
+if test "$(which automake)"; then
     export AUTOMAKE="automake"
-elif test "$(command -v automake-$AM_VERSION)"; then
+elif test "$(which automake-$AM_VERSION)"; then
     export AUTOMAKE="automake-$AM_VERSION"
 else
     echo "no automake found"
 fi
 
-if ! make -nq -f Makefile.requirements; then
-    echo "creating Perl requirements for project..."
-    make -f Makefile.requirements
-fi
+# use the VERSION file in the project to set the PACKAGE_VERSION
+#if test -z "$VERSION"; then
+#    test -e VERSION && VERSION=$(cat VERSION)
+#fi
 
 # --force: consider all files obsolete (ignores timestamps)
 # --warnings=all
-autoreconf \
+VERSION="$VERSION" autoreconf \
     "--include=${_include_dir}" \
     "$@" \
     --force \

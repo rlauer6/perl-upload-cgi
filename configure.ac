@@ -12,8 +12,7 @@ __poor_mans_expand_file_name () {
     _tmp_name=$1
     _tmp_last="`eval echo '${'"${_tmp_name}"'}'`"
     if test -z "${_tmp_last}"; then
-        printf "__poor_mans_expand_file_name() (WARNING): var \"%s\" is empty\n" \
-          "${_tmp_name}" 1>&2
+        printf "%s\n" "none"
         return 0;  # nothing to do
     fi
     _tmp_last_expanded="`eval echo ${_tmp_last}`"
@@ -80,6 +79,7 @@ do_subst_command='do_subst = sed \
   -e '"'"'s,[@]apache_site_configdir[@],$(apache_site_configdir),g'"'"' \
   -e '"'"'s,[@]apache_site_cgibindir[@],$(apache_site_cgibindir),g'"'"' \
   -e '"'"'s,[@]apache_site_htdocsdir[@],$(apache_site_htdocsdir),g'"'"' \
+  -e '"'"'s,[@]apache_site_includedir[@],$(apache_site_includedir),g'"'"' \
   -e '"'"'s,[@]apache_site_imgdir[@],$(apache_site_imgdir),g'"'"' \
   -e '"'"'s,[@]apache_site_cssdir[@],$(apache_site_cssdir),g'"'"' \
   -e '"'"'s,[@]apache_site_javascriptdir[@],$(apache_site_javascriptdir),g'"'"' \
@@ -93,15 +93,20 @@ do_subst_command='do_subst = sed \
   -e '"'"'s,[@]apache_site_spool_dir[@],$(apache_site_spool_dir),g'"'"' \
 \
   -e '"'"'s,[@]apache_site_reportsdir[@],$(apache_site_reportsdir),g'"'"' \
-  -e '"'"'s,[@]apache_vhost_dir[@],$(apache_vhost_dir),g'"'"' \
+  -e '"'"'s,[@]apache_vhostdir[@],$(apache_vhostdir),g'"'"' \
   -e '"'"'s,[@]apache_vhost_confdir[@],$(apache_vhost_confdir),g'"'"' \
   -e '"'"'s,[@]apache_vhost_domain[@],$(apache_vhost_domain),g'"'"' \
   -e '"'"'s,[@]apache_vhost_server[@],$(apache_vhost_server),g'"'"' \
   -e '"'"'s,[@]apache_vhost_alias[@],$(apache_vhost_alias),g'"'"' \
 \
   -e '"'"'s,[@]bucket_name[@],$(bucket_name),g'"'"' \
+  -e '"'"'s,[@]bucket_prefix[@],$(bucket_prefix),g'"'"' \
   -e '"'"'s,[@]profile[@],$(profile),g'"'"' \
   -e '"'"'s,[@]s3_host[@],$(s3_host),g'"'"' \
+  -e '"'"'s,[@]region[@],$(region),g'"'"' \
+  -e '"'"'s,[@]cookie_name[@],$(cookie_name),g'"'"' \
+  -e '"'"'s,[@]redis_server[@],$(redis_server),g'"'"' \
+  -e '"'"'s,[@]redis_port[@],$(redis_port),g'"'"' \
 '
 ]
 
@@ -130,7 +135,7 @@ AC_PATH_PROG([POD2MARKDOWN],
 	[pod2markdown])
 
 if test -z "$POD2MARKDOWN" ; then 
-  AC_MSG_ERROR([pod2markdown found?])
+  AC_MSG_WARN([pod2markdown found?])
 fi
 
 AC_PATH_PROG([RPMBUILD],
@@ -195,24 +200,59 @@ AC_ARG_WITH([bucket_name],[  --with-bucket-name ],
 
 AC_SUBST([bucket_name])
 
+AC_ARG_WITH([region],[  --with-region ],
+	[region=$withval],
+        [region=us-east-1],
+)
+
+AC_SUBST([region])
+
+AC_ARG_WITH([bucket_prefix],[  --with-bucket-name ],
+	[bucket_prefix=$withval],
+        [bucket_prefix=/],
+)
+
+AC_SUBST([bucket_prefix])
+
 AC_ARG_WITH([profile],[  --with-profile ],
 	[profile=$withval],
-        [profile=localstack]
+        [profile=""]
 )
 
 AC_SUBST([profile])
 
 AC_ARG_WITH([s3_host],[  --with-s3-host ],
 	[s3_host=$withval],
-        [s3_host=s3.localhost.localstack.cloud]
+        [s3_host=https://s3.amazonaws.com]
 )
 
 AC_SUBST([s3_host])
+
+AC_ARG_WITH([cookie_name],[  --with-cookie-name ],
+	[cookie_name=$withval],
+        [cookie_name=session]
+)
+
+AC_SUBST([cookie_name])
 
 AC_ARG_WITH([license],[  --with-license (defaults to GNU Public License)],
 	[LICENSE=$withval],
         [LICENSE=["GNU Public License"]]
 )
+
+AC_ARG_WITH([redis_server],[  --with-redis-server ],
+	[redis_server=$withval],
+        [redis_server=localhost]
+)
+
+AC_SUBST([redis_server])
+
+AC_ARG_WITH([redis_port],[  --with-redis-port ],
+	[redis_port=$withval],
+        [redis_port=6379]
+)
+
+AC_SUBST([redis_port])
 
 AC_SUBST([LICENSE])
 
@@ -261,6 +301,11 @@ printf "\n"
 printf "                    Maintainer: ${PACKAGE_BUGREPORT}\n"
 printf "                       Version: ${PACKAGE_VERSION}\n"
 printf "\n"
+printf "                        Region: %s\n" "`__poor_mans_expand_file_name region`"
 printf "                        Bucket: %s\n" "`__poor_mans_expand_file_name bucket_name`"
-printf "                       S3 Host: %s\n" "`__poor_mans_expand_file_name s3_host`"
+printf "                 Bucket prefix: %s\n" "`__poor_mans_expand_file_name bucket_prefix`"
+printf "                       S3 host: %s\n" "`__poor_mans_expand_file_name s3_host`"
+printf "                   Cookie name: %s\n" "`__poor_mans_expand_file_name cookie_name`"
+printf "                    Redis port: %s\n" "`__poor_mans_expand_file_name redis_port`"
+printf "                  Redis server: %s\n" "`__poor_mans_expand_file_name redis_server`"
 printf "                       Profile: %s\n" "`__poor_mans_expand_file_name profile`"

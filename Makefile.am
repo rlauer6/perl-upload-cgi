@@ -6,7 +6,8 @@ ACLOCAL_AMFLAGS = -I autotools
 
 dist_noinst_DATA =  \
     README.md \
-    ChangeLog
+    ChangeLog \
+    requirements.txt
 
 # These are automatically added to the distribution since automake
 # needs them to create the Makefile.in
@@ -22,10 +23,20 @@ all:
 
 # install CPAN dependencies
 .PHONY: cpan
+
+cpanm:
+	if test -z $$(command -v cpanm); then \
+	  curl -L http://cpanmin.us | perl - App::cpanminus; \
+	fi
+
 cpan:
-	mkdir -p $(abs_builddir)/cpan
+	if test -z $$(command -v cpanm); then \
+	  >&2 echo "no cpanm available...try 'make cpanm'"; \
+	  false; \
+	fi
+
 	for a in $$(cat requirements.txt); do \
-	  cpanm -i -L $(abs_builddir)/cpan -n $$a; \
+	  cpanm -v -n $$a; \
 	done
 
 .PHONY: test

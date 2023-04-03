@@ -4,7 +4,7 @@
         "level" : "info"
     },
     "upload" : {
-        "path" : "@apache_site_spooldir@/spool",
+        "path" : "@apache_site_spooldir@",
         "timeout" : {
             "session" : 60,
             "file" : 60

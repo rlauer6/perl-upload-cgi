@@ -1,3 +1,75 @@
+Mon Apr  3 18:14:52 2023  Rob Lauer  <rlauer6@comcast.net>
+
+	[1.0.2]
+	* VERSION: bump
+	* NEWS.md: updates
+	* bootstrap: upgraded
+	* src/main/bash/bin/Makefile.am
+	- no bash scripts yet, but prep for them in case
+	(bin_SCRIPTS): new
+	* src/main/perl/bin/Makefile.am
+	- remove perl-build.inc rules, use perl-bin.inc
+	* docker-compose.yml: example docker-compose config for LocalStack
+	* README-SETUP.md: new
+	* autotools/apache_config.m4: apache_vhost_dir ->  apache_vhostdir
+	* includes/apache-directories.inc
+	- likewise
+	- $(apache_site)/logs -> $(apache_sitedir)/log
+	* includes/perl-cgi-bin.inc
+	- build rule for .cgi files
+	* includes/perl-build.inc
+	- remove .pm rule, add man page rule
+	* includes/perl-modules.inc
+	- build rule for Apache::Bootstrap::Upload
+	* autotools/ax_requirements_check.m4: Workflow::Inotify
+	* requirements.txt: likewise
+	* .gitignore: *.pl, *.pm, *.1man
+	* configure.ac
+	- make pod2markdown optional
+	(__poor_mans_expand_file_name): no warning on empty string
+	(do_subst_command)
+	- apache_vhost_dir -> apache_vhostdir
+	- + bucket_prefix, redis_server, redis_port, cookie_name, region
+	(AC_ARG_WITH): likewise
+	* Makefile.am:
+	- add requirements.txt to distribution
+	(cpanm): new
+	(cpan): build modules in system directory
+	* config/Makefile.am
+	- create web server directories
+	- create spool directory
+	* config/upload.cfg.in
+	(watch_upload)
+	- dir = @apache_site_spooldir@
+	(workflow_s3_uploader):
+	- + region
+	- no longer use loglevel since log4perl config sets level
+	(workflow_s3_loader): move app values to handler section
+	* config/upload.json.in: spooldir
+	* src/main/perl/lib/Workflow/S3/Uploader.pm.in
+	- subclass Workflow::Inotify::Handler
+	- remove config vars provided by default by parent class
+	- refactored new()
+	(handler): parse filename for account id
+	(init_logger): new
+	(init_s3): new
+	(init_credentials): new
+	* perlcriticrc
+	- close
+	* src/main/perl/lib/Apache/Bootstrap/Upload.pm.in: new
+	* src/main/perl/cgi-bin/upload.pl.in
+	- refactoring
+	(fetch_status): renamed status()
+	(initialize_upload): rename initialize()
+	(upload)
+	- copy files, don't rename
+	- copy files to account directory
+	(get_account_id): new
+	(_get_config): prep for caching
+	(main): rename handler
+	* src/main/perl/lib/Makefile.am
+	- add Apache::Bootstrap::Upload to build
+
 Thu Feb  9 10:55:46 2023  Rob Lauer  <rlauer6@comcast.net>
 
 	[autoconfiscation]:

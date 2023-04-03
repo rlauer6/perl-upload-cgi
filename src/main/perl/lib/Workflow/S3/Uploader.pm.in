@@ -1,13 +1,12 @@
 package Workflow::S3::Uploader;
 
-# AWS S3 file uploader handler for inotify events
+# AWS S3 file upload handler for inotify events
 
 use strict;
 use warnings;
 
 use Amazon::Credentials;
 use Amazon::S3;
-use Config::IniFiles;
 use Carp;
 use Data::Dumper;
 use English qw(-no_match_vars);
@@ -27,21 +26,17 @@ Readonly::Hash our %LOG4PERL_LEVELS => (
   trace => $TRACE,
 );
 
-use parent qw(Class::Accessor::Fast);
+use parent qw(Workflow::Inotify::Handler);
 
 __PACKAGE__->follow_best_practice;
 __PACKAGE__->mk_accessors(
   qw(
-    credentials
-    config
-    bucket_name
     bucket
-    host
-    name
+    credentials
     fullname
-    mask
     logger
-    profile
+    mask
+    name
     s3
   )
 );
@@ -49,34 +44,162 @@ __PACKAGE__->mk_accessors(
 Readonly our $TRUE  => 1;
 Readonly our $FALSE => 0;
 
+Readonly our $EMPTY => q{};
+Readonly our $SLASH => q{/};
+
+our $VERSION = '@PACKAGE_VERSION@'; ## no critic (RequireInterpolation)
+
 caller or __PACKAGE__->main();
+
+########################################################################
+sub handler {
+########################################################################
+  my ( $self, $event ) = @_;
+
+  return
+    if $event->mask != IN_CLOSE_WRITE;
+
+  my $name     = $event->name;
+  my $fullname = $event->fullname;
+  my $account;
+
+  $self->get_logger->info( sprintf 'event received for %s', $fullname );
+
+  if ( $name =~ /^(\d+)-(.*?)$/xsm ) {
+    ( $account, $name ) = ( $1, $2 );
+  }
+  else {
+    $account = 'trash';
+  }
+
+  my $bucket_prefix = $self->get_bucket_prefix // $SLASH;
+
+  my $key = sprintf '%s/%s/%s', $bucket_prefix, $account, $name;
+
+  $self->get_logger->info(
+    sub {
+      return sprintf 'attempting to store object to s3://%s/%s',
+        $self->get_bucket_name, $key;
+    }
+  );
+
+  my $bucket = $self->get_bucket;
+
+  my $retval = $bucket->add_key_filename( $key, $fullname );
+
+  if ( !$retval ) {
+    $self->get_logger->error(
+      sub {
+        return Dumper(
+          [ $bucket->err, $bucket->errstr, $bucket->last_response ] );
+      }
+    );
+  }
+
+  return;
+}
 
 ########################################################################
 sub new {
 ########################################################################
-  my ( $class, $config ) = @_;
+  my ( $class, @args ) = @_;
 
-  if ( $config && !ref $config ) {
-    if ( -e $config ) {
-      $config = Config::IniFiles->new( -file => $config );
-    }
+  my $self = $class->SUPER::new(@args);
+
+  $self->init_logger;
+
+  $self->init_credentials;
+
+  $self->init_s3;
+
+  $self->get_logger->info( sprintf '%s initialized', __PACKAGE__ );
+
+  my $settings = <<'END_OF_SETTINGS';
+-------------------------------
+host...........%s
+bucket_name....%s
+bucket_prifix..%s
+profile........%s
+region.........%s
+secure.........%s
+END_OF_SETTINGS
+
+  $self->get_logger->info(
+    sprintf $settings,
+    map { $self->get($_) // $EMPTY }
+      qw(host bucket_name bucket_prefix profile region secure)
+  );
+
+  return $self;
+}
+
+########################################################################
+sub init_s3 {
+########################################################################
+  my ($self) = @_;
+
+  my $bucket_name = $self->get_bucket_name;
+
+  croak "no bucket name\n"
+    if !$bucket_name;
+
+  my $host = $self->get_host;
+
+  my $protocol = 'http';
+
+  if ( $host =~ /^(https?):\/\/(.*)$/xsmi ) {
+    $protocol = $1;
+    $host     = $2;
   }
 
-  my $self = $class->SUPER::new( { config => $config } );
+  my $secure = $protocol eq 'https' ? $TRUE : $FALSE;
 
-  my $profile = $config->val( s3 => 'profile' );
-  $self->set_profile($profile);
+  my $s3 = Amazon::S3->new(
+    { credentials => $self->get_credentials,
+      host        => $host,
+      logger      => $self->get_logger,
+      region      => $self->get_region,
+      secure      => $secure,
+    }
+  );
 
-  my $bucket_name = $config->val( s3 => 'bucket' );
-  $self->set_bucket_name($bucket_name);
+  $self->get_logger->debug(
+    sprintf "S3 settings\nhost: %s://%s\nregion: %s\n",
+    $protocol, $host, $self->get_region );
 
-  my $host = $config->val( s3 => 'host' );
-  $self->set_host($host);
+  $self->set_s3($s3);
 
-  my $level = $config->val( log4perl => 'loglevel' );
-  $level //= 'info';
+  $self->set_bucket( $s3->bucket( { bucket => $bucket_name } ) );
 
-  my $log4perl_conf = $config->val( log4perl => 'log4perl_conf' );
+  return $self;
+}
+
+########################################################################
+sub init_credentials {
+########################################################################
+  my ($self) = @_;
+
+  my $credentials = Amazon::Credentials->new(
+    { order   => [qw(env file)],
+      profile => $self->get_profile,
+      logger  => $self->get_logger,
+    }
+  );
+
+  $self->set_credentials($credentials);
+
+  return $self;
+}
+
+########################################################################
+sub init_logger {
+########################################################################
+  my ($self) = @_;
+
+  my $log4perl_conf = $self->get_log4perl_conf;
+
+  croak "no log4perl configuration!\n"
+    if !$log4perl_conf;
 
   my $logger = eval {
     if ($log4perl_conf) {
@@ -89,51 +212,16 @@ sub new {
   };
 
   if ( !$logger || $EVAL_ERROR ) {
-    die "error initializing logger:\n$EVAL_ERROR";
+    croak "error initializing logger:\n$EVAL_ERROR";
   }
 
-  $logger->level( $LOG4PERL_LEVELS{$level} );
+  my $level = { reverse %LOG4PERL_LEVELS }->{ $logger->level };
 
-  my $credentials = Amazon::Credentials->new(
-    { profile => $profile,
-      debug   => $ENV{DEBUG} ? $TRUE : $FALSE,
-      logger  => $logger,
-    }
-  );
-
-  $self->set_credentials($credentials);
-
-  my $s3 = Amazon::S3->new(
-    { credentials => $credentials,
-      debug       => $ENV{DEBUG} ? $TRUE : $FALSE,
-      host        => $host,
-      logger      => $self->get_logger(),
-    }
-  );
-
-  $self->set_s3($s3);
-
-  $self->set_bucket( $s3->bucket( { bucket => $self->get_bucket_name } ) );
+  # this ends up in `inotify.pl` log...
+  print {*STDERR} sprintf "[%s]::handler logging initialized at %s level\n",
+    __PACKAGE__, $level;
 
   return $self;
-}
-
-########################################################################
-sub handler {
-########################################################################
-  my ( $self, $event ) = @_;
-
-  return
-    if $event->mask != IN_CLOSE_WRITE;
-
-  $self->get_logger->info( sprintf 'event received for %s',
-    $event->fullname );
-
-  my $key = sprintf '/uploads/%s', $event->name;
-
-  $self->get_bucket->add_key_filename( $key, $event->fullname );
-
-  return;
 }
 
 # mock's to simulate event in main()
@@ -183,12 +271,15 @@ sub main {
   my $file = shift @ARGV;
   my $key  = $options{key} // basename $file;
 
-  # simulate an event...
-  $handler->set_fullname($file);
-  $handler->set_name($key);
-  $handler->set_mask(IN_CLOSE_WRITE);
+  # assuming your handler has mocked name(), mask(), and fullname()
+  my $event = $handler;
 
-  $handler->handler($handler);
+  # simulate an event...
+  $event->set_fullname($file);
+  $event->set_name($key);
+  $event->set_mask(IN_CLOSE_WRITE);
+
+  $handler->handler($event);
 
   return;
 }
@@ -205,16 +296,42 @@ __END__
 
 =head1 NAME
 
+Workflow::S3::Uploader - handler for uploading objects to S3
+
 =head1 SYNOPSIS
+
+ require Workflow::S3::Uploader;
+
+ my $handler = Workflow::S3::Uploader->new('upload.cfg');
+
+ # assuming your handler has mocked name(), mask(), and fullname()
+ my $event = $handler;
+
+ # simulate an event...
+ $event->set_fullname($file);
+ $event->set_name($key);
+ $event->set_mask(IN_CLOSE_WRITE);
+
+ $handler->handler($event);
 
 =head1 DESCRIPTION
 
+This class represents a handler used with L<Workflow::Inotify>. Its
+purpose is to respond to I<inotify> events by moving a file from a
+local directory to S3.
+
 =head1 METHODS AND SUBROUTINES
+
+=head2 handler
+
+ handler(event)
 
 =head1 SEE ALSO
 
+L<Workflow::Inotify>, L<Linux::Inotify2>
+
 =head1 AUTHOR
 
-Rob Lauer - <rlauer@usgn.net>
+Rob Lauer - <rlauer6@comcast.net>
 
 =cut

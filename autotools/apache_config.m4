@@ -9,7 +9,7 @@ dnl used to provide support for configuring Apache websites
 dnl 
 dnl autoconf variables provided by this macro include:
 dnl 
-dnl apache_vhost_dir      => the directory where all the virtual hosts reside
+dnl apache_vhostdir       => the directory where all the virtual hosts reside
 dnl                          examples: /usr/local/vhosts, /var, /var/www, etc.
 dnl apache_vhost_confdir  => the directory where all the virtaul host configuration files reside 
 dnl                          examples: /etc/httpd/conf.d, /etc/apache2/sites-available, /usr/local/bin/conf/conf.d
@@ -38,7 +38,7 @@ dnl You might find a Makefile.am similar to that found below helpful.
 dnl
 dnl    SUBDIRS = .
 dnl    
-dnl    apache_vhost_dir = @apache_vhost_dir@
+dnl    apache_vhostdir =  @apache_vhostdir@
 dnl    
 dnl    apache_vhost_config = @apache_vhost_config@
 dnl    
@@ -92,13 +92,13 @@ AC_DEFUN([APACHE_CONFIG],[
       AC_SUBST([apache_vhost_domain])
     fi
 
-    apache_vhost_dir=${localstatedir}/www
+    apache_vhostdir=${localstatedir}/www
     AC_ARG_WITH(
-    	[apache-vhost-dir],[  --with-apache-vhost-dir=DIR],
-    	[apache_vhost_dir=$withval]
+    	[apache-vhostdir],[  --with-apache-vhostdir=DIR],
+    	[apache_vhostdir=$withval]
     	)
     
-    AC_SUBST([apache_vhost_dir])
+    AC_SUBST([apache_vhostdir])
 
     dnl typical locations for configuration directory based on distro
     if test -z "$apache_vhost_confdir"; then

@@ -8,6 +8,7 @@ AC_DEFUN([AX_REQUIREMENTS_CHECK],[
   ads_PERL_MODULE([File::HomeDir], [], [1.006])
   ads_PERL_MODULE([JSON], [], [4.07])
   ads_PERL_MODULE([Linux::Inotify2], [], [2.3])
+  ads_PERL_MODULE([Workflow::Inotify], [], [1.0.3])
   ads_PERL_MODULE([Log::Log4perl], [], [1.55])
   ads_PERL_MODULE([Log::Log4perl::Level], [], [])
   ads_PERL_MODULE([Number::Bytes::Human], [], [0.11])

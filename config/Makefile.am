@@ -14,9 +14,19 @@ SERVICE_CONFIG = \
 INI_CONFIG = \
     upload.cfg.in
 
+PROGRESS_CONFIG = \
+    apache2-upload-progress-redis.conf
+
+HTTP_CONFIG = \
+    perl-upload-cgi.conf.in
+
+GHTTP_CONFIG=$(HTTP_CONFIG:.conf.in=.conf)
+
+httpd_confd_DATA = $(GHTTP_CONFIG)
+
 # upload.cgi configuration file
 JSON_CONFIG = \
-    upload.json.in
+    apache2-upload-progress.json.in
 
 GJSON_CONFIG = $(JSON_CONFIG:.json.in=.json)
 
@@ -30,15 +40,24 @@ apache_site_config_DATA = \
 workflow_config_DATA = \
     $(GINI_CONFIG)
 
+progress_configdir = $(datadir)/$(PACKAGE)
+
+dist_progress_config_DATA = \
+    $(PROGRESS_CONFIG)
+
 systemd_DATA = \
     $(GSERVICE_CONFIG)
 
 dist_noinst_DATA = \
     $(JSON_CONFIG) \
     $(INI_CONFIG) \
-    $(SERVICE_CONFIG)
+    $(SERVICE_CONFIG) \
+    $(HTTP_CONFIG)
 
 @do_subst_command@
+
+$(GHTTP_CONFIG): % : %.in
+	$(do_subst) $< > $@
 
 $(GJSON_CONFIG): % : %.in
 	$(do_subst) $< > $@

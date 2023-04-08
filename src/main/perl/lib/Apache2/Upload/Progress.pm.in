@@ -1,0 +1,1589 @@
+package Apache2::Upload::Progress;
+
+# upload files using mod_perl with progress meter
+# --- inspired in part by Apache-UploadMeter - https://metacpan.org/pod/Apache::UploadMeter
+
+use strict;
+use warnings;
+
+use Apache2::Const -compile => qw(
+  DECLINED
+  HTTP_BAD_REQUEST
+  HTTP_UNAUTHORIZED
+  LOG_DEBUG
+  LOG_INFO
+  LOG_LEVELMASK
+  M_POST
+  NOT_FOUND
+  OK
+  REDIRECT
+  SERVER_ERROR
+  OR_ALL
+  RAW_ARGS
+  NOT_IN_LIMIT
+  NOT_IN_DIR_LOC_FILE
+);
+
+use Apache2::Filter qw[];
+use Apache2::CmdParms;
+use Apache2::Directive;
+use Apache2::RequestRec qw(content_type);
+use Apache2::RequestIO  qw[];
+use Apache2::Response   qw[];
+use Apache2::Request;
+use Apache2::Connection;
+use Apache2::Upload;
+use Apache2::ServerRec;
+use Apache2::ServerUtil qw[];
+use Apache2::Module     qw(add);
+
+use APR::Const -compile => qw( SUCCESS );
+use APR::Brigade qw[];
+use APR::Bucket  qw[];
+use APR::Table   qw[];
+
+use Class::Accessor::Fast;
+use Carp::Always;
+use Data::Dumper;
+use Data::UUID;
+use Date::Format qw(time2str);
+use Digest::MD5  qw(md5_hex);
+use English      qw(-no_match_vars);
+use File::Spec   qw[];
+use JSON;
+use List::Util qw(max min any pairs none);
+use Log::Log4perl::Level;
+use Log::Log4perl;
+use Number::Bytes::Human qw(format_bytes);
+use Template;
+use Time::HiRes  qw(sleep gettimeofday);
+use Scalar::Util qw(reftype);
+
+our @ISA = qw(Exporter);
+
+our @EXPORT = qw(get_config dumper);
+
+# use Apache2::Upload::Progress::Redis;
+
+########################################################################
+use Readonly;
+
+Readonly our $DEFAULT_SESSION_TIMEOUT => 15;
+
+# booleans
+Readonly our $TRUE  => 1;
+Readonly our $FALSE => 0;
+
+# chars
+Readonly our $EMPTY       => q{};
+Readonly our $SLASH       => q{/};
+Readonly our $EQUALS_SIGN => q{=};
+
+Readonly::Hash our %LOG4PERL_LEVELS => (
+  trace => $TRACE,
+  debug => $DEBUG,
+  info  => $INFO,
+  error => $ERROR,
+  warn  => $WARN,
+);
+
+Readonly::Array our @REQUIRED_METHODS => qw(
+  set_session_key
+  get_session_key
+  get_all_session_keys
+  get_upload_status
+  flush_session_cache
+  init_cache
+);
+
+Readonly our @API_ENDPOINTS => (
+  '/upload'         => 'upload',
+  '/upload/init'    => 'upload_init',
+  '/upload/form'    => 'upload_form',
+  '/upload/reset'   => 'upload_reset',
+  '/upload/version' => 'upload_version',
+  '/upload/status'  => 'upload_status',
+);
+
+Readonly our $LOCATION_TEMPLATE => <<'END_OF_LOCATION';
+<Location %s>
+    SetHandler perl-script
+    PerlResponseHandler Apache2::Upload::Progress->%s
+    AcceptPathInfo On
+</Location>
+END_OF_LOCATION
+
+########################################################################
+
+our $VERSION = '@PACKAGE_VERSION@';
+
+our $UPLOAD_CONFIG;
+our $LOGGER;
+
+our $PROGRESS_CLASS;
+our $PROGRESS_CONFIG;
+
+########################################################################
+sub check_class {
+########################################################################
+  my ($r) = @_;
+
+  if ( !$PROGRESS_CLASS ) {
+    $r->log->error('no progress class was defined!');
+
+    return $FALSE;
+  }
+
+  return $TRUE;
+}
+
+########################################################################
+sub dispatch {
+########################################################################
+  my ( $r, $req ) = @_;
+
+  dumper( accept => $r->headers_in->get('Accept') );
+
+  my $action = $req->param('action');
+  $action //= 'form';
+
+  my %actions = (
+    status  => \&upload_status,
+    init    => \&upload_init,
+    form    => \&upload_form,
+    reset   => \&upload_reset,
+    version => \&upload_version,
+  );
+
+  return $actions{$action}->($r);
+}
+
+########################################################################
+sub upload_version {
+########################################################################
+  my ( $class, $r ) = @_;
+
+  $r //= $class;
+
+  return Apache2::Const::HTTP_BAD_REQUEST
+    if !check_class;
+
+  return output_text( $r, $VERSION );
+}
+
+########################################################################
+sub upload_form {
+########################################################################
+  my ( $class, $r ) = @_;
+
+  $r //= $class;
+
+  return Apache2::Const::HTTP_BAD_REQUEST
+    if !check_class;
+
+  my $session_id = get_session_id($r);
+  $session_id ||= create_session_id($r);
+
+  my $content = get_upload_form($r);
+
+  my $cookie = create_cookie( $r, $session_id );
+
+  return output_html( $r, $content, $cookie );
+}
+
+########################################################################
+sub upload_reset {
+########################################################################
+  my ( $class, $r ) = @_;
+
+  $r //= $class;
+
+  return Apache2::Const::HTTP_BAD_REQUEST
+    if !check_class;
+
+  my $session_id = get_session_id($r);
+
+  return Apache2::Const::NOT_FOUND
+    if !$session_id;
+
+  dumper( 'keys' => flush_session_cache($session_id) );
+
+  return upload_status( $class, $r );
+}
+
+########################################################################
+sub upload {
+########################################################################
+  my ( $class, $r ) = @_;
+
+  $r //= $class;
+
+  return Apache2::Const::HTTP_BAD_REQUEST
+    if !check_class;
+
+  dumper( 'upload', accept => $r->headers_in->get('Accept') );
+
+  my $session_id = get_session_id($r);
+
+  my $session = validate_session( $r, $session_id );
+
+  return Apache2::Const::HTTP_UNAUTHORIZED
+    if !$session;
+
+  my $req = Apache2::Request->new($r);
+
+  return dispatch( $r, $req )
+    if $r->method ne 'POST';
+
+  $r->log->debug('uploading file:');
+
+  my $upload_id = get_upload_id($r) // $EMPTY;
+
+  $r->log->debug( ' upload_id: ' . $upload_id );
+  $r->log->debug( ' query string: ' . $r->args // $EMPTY );
+
+  my ($name) = $req->upload();
+
+  $r->log->debug( ' name ' . $name );
+
+  my $config = get_config($r);
+
+  my $upload = $req->upload($name);
+
+  my $prefix = $session->{prefix} || 'anon';
+
+  my $path = sprintf '%s/%s-%s', $config->get_upload->{path}, $prefix,
+    $upload->filename();
+
+  $r->log->debug( ' filename ' . $upload->filename() );
+  $r->log->debug( ' path: ' . $path );
+
+  $upload->link($path);
+
+  # TODO: check accept headers, if html, then redirect?
+  if ( $config->get_upload->{redirect} ) {
+    $r->status(Apache2::Const::REDIRECT);
+
+    $r->headers_out->set( Location => '/upload-page' );
+
+    return $r->status(Apache2::Const::REDIRECT);
+  }
+  else {
+    my $id = "$session_id:$upload_id";
+
+    my $file_status = get_upload_status( $r, $id );
+
+    dumper( file_status => $file_status );
+
+    my %status = (
+      %{$file_status},
+      name     => $name,
+      filename => $upload->filename,
+      path     => $path,
+      size     => -s $path,
+      id       => $id,
+    );
+
+    return output_json( $r, \%status );
+  }
+}
+
+########################################################################
+sub upload_status {
+########################################################################
+  my ( $class, $r ) = @_;
+
+  $r //= $class;
+
+  return Apache2::Const::HTTP_BAD_REQUEST
+    if !check_class;
+
+  my $session_id = get_session_id($r);
+
+  dumper( session_id => $session_id );
+
+  return $EVAL_ERROR
+    if !$session_id;
+
+  return Apache2::Const::HTTP_UNAUTHORIZED
+    if !validate_session( $r, $session_id );
+
+  my $id = get_upload_id($r);
+
+  my %status;
+  my $keys;
+
+  if ( !$id ) {
+    $keys = get_all_session_keys( $r, $session_id );
+  }
+  else {
+    $keys = ["$session_id:$id"];
+  }
+
+  foreach ( @{$keys} ) {
+    $status{$_} = get_session_key( $r, $_ );
+  }
+
+  return output_json( $r, { files => \%status } );
+}
+
+########################################################################
+sub upload_init {
+########################################################################
+  my ( $class, $r ) = @_;
+
+  $r //= $class;
+
+  return Apache2::Const::HTTP_BAD_REQUEST
+    if !check_class;
+
+  my $content;
+  my $session_id = get_session_id($r);
+
+  return $EVAL_ERROR
+    if !$session_id;
+
+  return Apache2::Const::HTTP_UNAUTHORIZED
+    if !validate_session( $r, $session_id );
+
+  $r->read( $content, $r->headers_in->get('Content-Length') );
+
+  my $file_list = eval { decode_json($content); };
+
+  dumper(
+    content_type => $r->content_type,
+    content      => $content,
+    file_list    => $file_list,
+  );
+
+  if ( !$file_list || $EVAL_ERROR ) {
+    return output_json( $r, { error => "$EVAL_ERROR" } );
+  }
+
+  my %files = map { ( $_->{filename} => $_ ) } @{$file_list};
+
+  my $config  = get_config($r);
+  my $timeout = $config->get_upload->{timeout};
+
+  foreach my $file ( keys %files ) {
+    my $id = md5_hex( $session_id, time, $file );
+
+    $files{$file}->{id}         = $id;
+    $files{$file}->{size_human} = format_bytes( $files{$file}->{size} );
+    $files{$file}->{init_time}  = time;
+
+    set_session_key( $r, "$session_id:$id", $files{$file}, $timeout );
+  }
+
+  return output_json( $r, \%files );
+}
+
+# TIME FUNCTIONS
+########################################################################
+sub to_microseconds {
+########################################################################
+  my ( $ms, $us ) = @_;
+
+  if ( !defined $ms ) {
+    ( $ms, $us ) = gettimeofday();
+  }
+
+  return $ms * 1_000_000 + $us;
+}
+
+########################################################################
+sub elapsed_time {
+########################################################################
+  my ( $start_time, $end_time ) = @_;
+
+  if ( !defined $end_time ) {
+    $end_time = to_microseconds(); # now
+  }
+
+  my $elapsed_time = $end_time - $start_time;
+  $elapsed_time = $elapsed_time > 0 ? int( $elapsed_time / 1_000 ) : 0;
+
+  my $elapsed_time_formatted = sprintf '%5.3f', $elapsed_time / 1000;
+
+  return ( $elapsed_time_formatted, $elapsed_time );
+}
+
+# CONFIG FUNCTIONS
+########################################################################
+sub post_config {
+########################################################################
+  my ( $conf_pool, $log_pool, $temp_pool, $s ) = @_;
+
+  $s->log->info( sprintf 'progress_class...[%s]', $PROGRESS_CLASS || $EMPTY );
+  $s->log->info( sprintf 'progress_config..[%s]',
+    $PROGRESS_CONFIG || $EMPTY );
+
+  if ($PROGRESS_CLASS) {
+    my $module = $PROGRESS_CLASS;
+    $module =~ s/::/\//gxsm;
+
+    my $retval = eval {
+      $s->log->debug( sprintf 'requiring........[%s.pm]', $module );
+
+      require "$module.pm";
+
+      $PROGRESS_CLASS->import(':DEFAULT');
+
+      no strict 'refs'; ## no critic ProhibitNostrict
+
+      foreach (@REQUIRED_METHODS) {
+        die "you must implement the $_ method in your handler!\n"
+          if !*{$_}{CODE};
+      }
+
+      return $TRUE;
+    };
+
+    if ($retval) {
+      $s->log->info(
+        sprintf '%s loaded successfully...initializing progress handler',
+        $PROGRESS_CLASS );
+
+      $retval = eval {
+        init_config( $s, $PROGRESS_CONFIG );
+
+        $s->log->info('initializing progress cache...');
+
+        init_cache($s);
+
+        $s->log->info('initializing progress logger');
+
+        init_logger();
+
+        return Apache2::Const::OK;
+      };
+    }
+    else {
+      $s->log->error("could NOT load $PROGRESS_CLASS: $EVAL_ERROR");
+      $PROGRESS_CLASS = $EMPTY;
+    }
+  }
+  else {
+    $s->log->error('No progress handler!');
+  }
+
+  return Apache2::Const::OK;
+}
+
+########################################################################
+sub get_config {
+########################################################################
+  my ($r) = @_;
+
+  return keys %{$UPLOAD_CONFIG} ? $UPLOAD_CONFIG : init_config($r);
+}
+
+########################################################################
+sub init_config {
+########################################################################
+  my ($r) = @_;
+
+  my $config_file = sprintf '%s/%s', $PROGRESS_CONFIG, $ENV{CONFIG_PATH};
+
+  if ( !-e $config_file ) {
+    $r->log->error("no file ($config_file) available");
+
+    return {};
+  }
+
+  my $self = eval {
+    local $RS = undef;
+
+    open my $fh, '<', $config_file
+      or die "could not open $config_file\n";
+
+    my $content = <$fh>;
+
+    close $fh;
+
+    return decode_json($content);
+  };
+
+  if ( !ref($self) || $EVAL_ERROR ) {
+    $r->log->error( 'unable to read config file: ' . $EVAL_ERROR );
+
+    return {};
+  }
+
+  if ( $r && $r->can('loglevel') ) {
+    $self->{apache_loglevel} = $r->loglevel();
+  }
+  else {
+    $self->{apache_loglevel} = Apache2::Const::LOG_INFO;
+  }
+
+  $UPLOAD_CONFIG = bless $self, 'Class::Accessor::Fast';
+
+  $UPLOAD_CONFIG->follow_best_practice;
+  $UPLOAD_CONFIG->mk_ro_accessors( keys %{$self} );
+
+  return $UPLOAD_CONFIG;
+}
+
+########################################################################
+# LOGGING FUNCTIONS
+########################################################################
+sub init_logger {
+########################################################################
+  my $config = get_config();
+
+  return
+    if !$config;
+
+  return $LOGGER
+    if $LOGGER;
+
+  my $log4perl = $config->get_log4perl;
+
+  return
+    if !$log4perl;
+
+  my $log4perl_conf = join "\n", @{ $log4perl->{config} || [] };
+
+  return
+    if !$log4perl_conf;
+
+  $LOGGER = eval {
+    Log::Log4perl::init( \$log4perl_conf );
+
+    my $level = $LOG4PERL_LEVELS{ $log4perl->{level} };
+    Log::Log4perl->get_logger->level($level);
+
+    return Log::Log4perl->get_logger;
+  };
+
+  return $LOGGER;
+}
+
+########################################################################
+sub dumper {
+########################################################################
+  my (@args) = @_;
+
+  if ($LOGGER) {
+    return $LOGGER->debug( Dumper \@args );
+  }
+  else {
+    local $Data::Dumper::Terse = $TRUE;
+
+    local $Data::Dumper::Sparseseen = $TRUE;
+
+    my ( $pkg, $line, $sub ) = ( caller 1 )[ 0, 2, 3 ];
+
+    my $pad = sprintf '[%s] [%s:%s %d]', scalar(localtime), $pkg, $sub, $line;
+
+    local $Data::Dumper::Pad = $pad;
+
+    if ( get_config->get_apache_loglevel >= Apache2::Const::LOG_DEBUG ) {
+      return print {*STDERR} Dumper( \@args );
+    }
+  }
+}
+
+########################################################################
+# OUTPUT FUNCTIONS
+########################################################################
+sub output_text {
+########################################################################
+  my ( $r, $content ) = @_;
+
+  $r->content_type('text/plain');
+
+  print "$content";
+
+  return Apache2::Const::OK;
+}
+
+########################################################################
+sub output_html {
+########################################################################
+  my ( $r, $content, $cookie ) = @_;
+
+  $r->content_type('text/html');
+
+  if ($cookie) {
+    $r->headers_out->set( 'Set-Cookie', $cookie );
+  }
+
+  print $content;
+
+  return Apache2::Const::OK;
+}
+
+########################################################################
+sub output_json {
+########################################################################
+  my ( $r, $content, $cookie ) = @_;
+
+  if ( ref $content ) {
+    $content = JSON->new->pretty->encode($content);
+  }
+
+  if ($cookie) {
+    $r->headers_out->set( 'Set-Cookie', $cookie );
+  }
+
+  $r->content_type('application/json');
+
+  print $content;
+
+  return Apache2::Const::OK;
+}
+
+########################################################################
+# UPLOAD FUNCTIONS
+########################################################################
+sub handler : method {
+########################################################################
+  my ( $class, $r ) = @_;
+
+  $r->method_number == Apache2::Const::M_POST
+    or return Apache2::Const::DECLINED;
+
+  $r->add_input_filter( $class . '->track_progress' );
+
+  return Apache2::Const::OK;
+}
+
+########################################################################
+sub get_upload_id {
+########################################################################
+  my ($r) = @_;
+
+  my $id = $r->headers_in->get('X-Upload-Id');
+
+  if ($id) {
+    $r->log->debug( 'got id: ' . $id . ' from header' );
+    return $id;
+  }
+
+  $id = $r->args;
+
+  if ( $id && $id =~ /(id=)?([[:digit:]A-Fa-f]{32})/xsm ) {
+    $id = $2;
+    $r->log->debug( 'got id: ' . $id . ' from query string' );
+  }
+
+  return;
+}
+
+########################################################################
+sub track_progress { ## no critic (ProhibitManyArgs)
+########################################################################
+  my ( $class, $f, $bb, $mode, $block, $readbytes ) = @_;
+
+  my $r = $f->r;
+
+  my $session_id = get_session_id($r);
+
+  return $EVAL_ERROR
+    if !$session_id;
+
+  my $upload_id = get_upload_id($r);
+
+  return Apache2::Const::DECLINED
+    if !$upload_id;
+
+  my $config = get_config($r);
+
+  if ( !$f->ctx ) {
+
+    my %ctx = (
+      content_length => $f->r->headers_in->get('Content-Length') || 0,
+      progress       => 0,
+      session        => $session_id,
+      id             => $upload_id,
+      config         => $config,
+      start_time     => to_microseconds(),
+      r              => $f->r,
+    );
+
+    $f->ctx( \%ctx );
+
+    $class->store_progress( $f->ctx );
+  }
+
+  my $rv = $f->next->get_brigade( $bb, $mode, $block, $readbytes );
+
+  if ( $rv != APR::Const::SUCCESS ) {
+    return $rv;
+  }
+
+  $f->ctx->{progress} += $bb->length;
+
+  $class->store_progress( $f->ctx );
+
+  return Apache2::Const::OK;
+}
+
+########################################################################
+sub store_progress {
+########################################################################
+  my ( $class, $ctx ) = @_;
+
+  my ( $session_id, $id, $progress, $content_length )
+    = @{$ctx}{qw( session id progress content_length)};
+
+  my $config = $ctx->{config};
+
+  my $file_info = get_session_key( $ctx->{r}, "$session_id:$id" );
+
+  dumper( file_info => $file_info );
+
+  if ( !keys %{$file_info} ) {
+
+    dumper('no keys? - cache timeout?');
+
+    $file_info->{id}             = $id;
+    $file_info->{session}        = $session_id;
+    $file_info->{content_length} = $content_length;
+  }
+
+  @{$file_info}{qw(elapsed_time_formatted elapsed_time)}
+    = elapsed_time( $ctx->{start_time} );
+
+  $file_info->{progress} = $progress;
+
+  my $percent_complete = 100 * min( 1, $progress / $content_length );
+
+  $file_info->{percent_complete} = sprintf '%3d', $percent_complete;
+
+  my $key         = "$session_id:$id";
+  my $expire_time = $config->get_upload->{expire_time};
+
+  set_session_key( $ctx->{r}, $key, $file_info, $expire_time );
+
+  return;
+}
+
+########################################################################
+# UPLOAD FORM FUNCTIONS
+########################################################################
+sub process_template {
+########################################################################
+  my ($template) = @_;
+
+  my $tt = Template->new(
+    { INCLUDE_PATH => $template->{include_path},
+      ABSOLUTE     => $template->{absolute},
+      INTERPOLATE  => $template->{interpolate},
+    }
+  );
+
+  my $template_name = $template->{upload}->{form};
+  my $content       = $EMPTY;
+
+  $content = eval {
+
+    my $parameters = { upload => $template->{upload}, };
+
+    if ( !$tt->process( $template_name, $parameters, \$content ) ) {
+      die $tt->error();
+    }
+
+    return $content;
+  };
+
+  if ( !$content || $EVAL_ERROR ) {
+
+    $content = <<"END_OF_HTML";
+<html>
+  <body>
+    <p>Error processing template: [$template_name]</p>
+    <pre>$EVAL_ERROR</pre>
+  </body>
+</html>
+END_OF_HTML
+  }
+
+  return $content;
+}
+
+########################################################################
+sub get_upload_form {
+########################################################################
+  my ($r) = @_;
+
+  my $config = get_config($r);
+
+  my $content;
+  my $template = $config->get_template;
+
+  if ($template) {
+    $content = process_template($template);
+  }
+  else {
+    $content = <<'END_OF_HTML';
+<html>
+  <body>
+    <form method="POST" action="/upload" enctype="application/x-www-form-urlencoded">
+      <input type="file" name="file"><button type="submit">Upload</button>
+    </form>
+  </body>
+</html>
+END_OF_HTML
+  }
+
+  return $content;
+}
+
+########################################################################
+# SESSION ID FUNCTIONS
+########################################################################
+sub create_session_id {
+########################################################################
+  my ($r) = @_;
+
+  my $c    = $r->connection;
+  my $ip   = $c->client_ip();
+  my $addr = $c->client_addr();
+
+  return md5_hex( time, rand(10_000), $ip, $addr );
+}
+
+########################################################################
+sub get_session_id {
+########################################################################
+  my ($r) = @_;
+
+  my $cookie_name = get_config($r)->get_session->{cookie_name};
+
+  return
+    if !$cookie_name;
+
+  my %cookies = get_cookies($r);
+
+  return $cookies{$cookie_name};
+}
+
+########################################################################
+sub validate_session {
+########################################################################
+  my ( $r, $session_id ) = @_;
+
+  return { session_id => $session_id, prefix => '1' };
+}
+
+########################################################################
+# COOKIE FUNCTIONS
+########################################################################
+sub create_cookie {
+########################################################################
+  my ( $r, $session_id ) = @_;
+
+  my $config = get_config($r);
+
+  my $expiry_time_minutes = $config->get_session->{timeout}
+    // $DEFAULT_SESSION_TIMEOUT;
+
+  my $expiry_time_secs = $expiry_time_minutes * 60 * 60;
+
+  my $expiry_date
+    = time2str( '%a, %d-%b-%Y %H:%M:%S GMT', time + $expiry_time_secs );
+
+  my $cookie_name = $config->get_session->{cookie_name};
+
+  return bake_cookie(
+    $cookie_name => $session_id,
+    SameSite     => $EMPTY,
+    Secure       => undef,
+    path         => $SLASH,
+    expires      => $expiry_date,
+  );
+}
+
+########################################################################
+sub get_cookies {
+########################################################################
+  my ($r) = @_;
+
+  my @cookies = split /\s*;\s*/xsm, $r->headers_in->get('Cookie') || q{};
+
+  return map { split /=/xsm, $_; } @cookies;
+}
+
+########################################################################
+sub bake_cookie {
+########################################################################
+  my (@cookie) = @_;
+
+  my $cookie = join '; ',
+    map { defined $_->[1] ? $_->[0] . $EQUALS_SIGN . $_->[1] : $_->[0] }
+    pairs @cookie;
+
+  return $cookie;
+}
+
+#########################################################################
+## CACHING FUNCTIONS (override these to implement your own caching)
+#########################################################################
+sub set_session_key {
+#########################################################################
+  #  my ( $r, $key, $value, $expire_time ) = @_;
+  #
+  #  dumper "SET SESSION KEY\n";
+  #
+  die q{you must implement your own set_session_key() method};
+
+  return;
+}
+#
+#########################################################################
+#sub get_upload_status {
+#########################################################################
+#  my ( $r, $id ) = @_;
+#
+#  return;
+#}
+#
+#########################################################################
+#sub flush_session_cache {
+#########################################################################
+#  my ( $r, $session_id ) = @_;
+#
+#  return;
+#}
+#
+#########################################################################
+#sub get_session_key {
+#########################################################################
+#  my ( $r, $id ) = @_;
+#
+#  return;
+#}
+#
+#########################################################################
+#sub get_all_session_keys {
+#########################################################################
+#  my ( $r, $session_id ) = @_;
+#
+#  return;
+#}
+#
+#########################################################################
+#sub init_cache {
+#########################################################################
+#  my ($r) = @_;
+#
+#  return;
+#}
+
+my @directives = (
+  { name         => '<UploadProgress',
+    func         => __PACKAGE__ . '::configure',
+    req_override => Apache2::Const::OR_ALL,
+    args_how     => Apache2::Const::RAW_ARGS,
+    errmsg       => 'Apache::Upload::Progress block',
+  },
+  { name         => '</UploadProgress',
+    func         => __PACKAGE__ . '::configure_end',
+    req_override => Apache2::Const::OR_ALL,
+    args_how     => Apache2::Const::RAW_ARGS,
+  },
+  { name         => 'UploadProgressHandler',
+    func         => __PACKAGE__ . '::configure_invalid',
+    req_override => Apache2::Const::OR_ALL,
+    args_how     => Apache2::Const::RAW_ARGS,
+    cmd_data     => 'UploadProgressHandler',
+  },
+  { name         => 'UploadProgressConfig',
+    func         => __PACKAGE__ . '::configure_invalid',
+    req_override => Apache2::Const::OR_ALL,
+    args_how     => Apache2::Const::RAW_ARGS,
+    cmd_data     => 'UploadProgressHandler',
+  }
+);
+
+if ( !$COMPILING ) {
+  Apache2::Module::add( __PACKAGE__, \@directives );
+}
+
+########################################################################
+sub configure {
+########################################################################
+  my ( $self, $parms, $val ) = @_;
+
+  my $namespace = __PACKAGE__;
+
+  $val =~ s/^(.*)>$/$1/xsm; # Clean trailing ">"
+
+  my $error = $parms->check_cmd_context(
+    Apache2::Const::NOT_IN_LIMIT | Apache2::Const::NOT_IN_DIR_LOC_FILE );
+
+  die $error
+    if $error;
+
+  my $dir = $parms->directive->as_hash->{'UploadProgress'}->{$val};
+
+  if ( $dir && keys %{$dir} ) {
+    if ( none { defined $dir->{$_} }
+      qw(UploadProgressHandler UploadProgressConfig) ) {
+      die "UploadProgress block must include $_\n";
+    }
+  }
+
+  $PROGRESS_CLASS  = $dir->{UploadProgressHandler};
+  $PROGRESS_CONFIG = $dir->{UploadProgressConfig};
+
+  if ( $PROGRESS_CLASS && $PROGRESS_CONFIG ) {
+    add_location_endpoints( $parms->server );
+  }
+
+  return;
+}
+
+########################################################################
+sub add_location_endpoints {
+########################################################################
+  my ($s) = @_;
+
+  my $upload_config = $EMPTY;
+
+  foreach my $p ( pairs @API_ENDPOINTS ) {
+    $upload_config .= sprintf $LOCATION_TEMPLATE, @{$p};
+  }
+
+  $s->log->debug( 'adding Location configuration for ' . __PACKAGE__ );
+  $s->log->debug($upload_config);
+
+  return $s->add_config( [ split /\n/xsm, $upload_config ] );
+}
+
+########################################################################
+sub configure_invalid {
+########################################################################
+  my ( $self, $parms, $val ) = @_;
+  my $conf = $parms->info;
+
+  die "$conf not in an <UploadProgress> block";
+}
+
+########################################################################
+sub configure_end {
+########################################################################
+  my ( $self, $parms, $val ) = @_;
+
+  my $conf = $parms->info;
+
+  die '</UploadProgress> mising beginning <UploadProgress>';
+}
+
+1;
+
+__END__
+
+=pod
+
+=head1 NAME
+
+Apache2::Upload::Progress - mod_perl based upload with progress monitoring
+
+=head1 SYNOPSIS
+
+ APREQ2_ReadLimit 2147483648
+ 
+ PerlLoadModule Apache2::Upload::Progress
+
+ PerlPostReadRequestHandler Apache2::Upload::Progress
+
+ PerlPostConfigHandler Apache2::Upload::Progress::post_config
+
+ # make sure this endpoint is defined first
+ <Location /upload>
+   SetHandler perl-script
+   PerlHandler Apache2::Upload::Progress->upload
+   AcceptPathInfo On
+ </Location>
+ 
+ <Location /upload/init>
+   SetHandler perl-script
+   PerlHandler Apache2::Upload::Progress->upload_init
+   AcceptPathInfo On
+ </Location>
+ 
+ <Location /upload/status>
+   SetHandler perl-script
+   PerlHandler Apache2::Upload::Progress->upload_status
+   AcceptPathInfo On
+ </Location>
+ 
+ <Location /upload/form>
+   SetHandler perl-script
+   PerlHandler Apache2::Upload::Progress->upload_form
+   AcceptPathInfo On
+ </Location>
+
+ <Location /upload/reset>
+   SetHandler perl-script
+   PerlHandler Apache2::Upload::Progress->upload_reset
+   AcceptPathInfo On
+ </Location>
+
+ <Location /upload/version>
+   SetHandler perl-script
+   PerlHandler Apache2::Upload::Progress->upload_version
+   AcceptPathInfo On
+ </Location>
+
+=head1 DESCRIPTION
+
+C<mod_perl> handlers for uploading files to a web server. This class
+also provides methods for monitoring the status of file
+uploads.
+
+Upload monitoring is done by accessing a URL endpoint that will return
+the JSON payload containing information about each file being
+uploaded. The information for each file is stored in a cache which
+allows requests that hit any of the web servers in your architecture
+to access the status information.
+
+The project includes a fully functional example that presents an
+upload form built using Bootstrap. The example requires an Apache web
+server and a Redis server. A C<docker-compose> file is included that
+will launch them in your development environment.
+
+=head1 HISTORY
+
+I<Originally written as a CGI, I decided to convert this module into a
+C<mod_perl> handler. In reviewing prior art and research C<mod_perl>
+handlers, I uncovered L<Apache::UploadMeter> which contained a lot of
+similar concepts (C<mod_perl> based, ability to serve an upload form,
+highly configurable...). Much of the Apache configuration code has
+been guided by the L<Apache::UPlaodMeter> implementation.>
+
+=head2 Differences Between C<Apache::UploadMeter> and C<Apache::Upload::Progress>
+
+=over 5
+
+=item * Caching
+
+The upload status in C<Apache::UploadMeter> is implemented using
+L<File::Cache>, implying it can only be used on a single Apache
+server. C<Apache::Upload::Progress> allows you specify your own cache
+hanlder (the default implementation uses Redis).
+
+=item * Form Handling
+
+Upload forms for C<Apache::Upload::Progress> are based on a
+configurable L<Template::Toolkit> based
+template. C<Apache::UploadMeter> serves up a hard coded form which
+only handles a single file upload. It appears one could include
+multiple forms on the page but that's not how a modern SPA typically
+works.
+
+=item * Output Format
+
+C<Apache::Upload::Progress> will only return JSON
+data. C<Apache::UploadMeter> can deliver results as JSON or XML.
+
+=item * Configuration
+
+C<Apache::Upload::Progress> uses a JSON configuration file to
+customize a large part of the process, whereas C<Apache::UploadMeter>
+is configured completely within the context of Apache's configuration.
+
+=item * File Uploads
+
+File uploads are actually handled by C<Apache2::Upload> for
+C<Apache2::Upload::Progress> and output locations are customized in
+the configuration file. Additionally, a companion application that
+runs as a daemon is provided in this project that will allow you to
+create a handler for off-loading the uploaded file to another location
+(e.g. Amazon S3).
+
+To be honest, I haven't tried to install C<Apache::UploadMeter> in
+order to figure out where files uploaded using that module end up.
+
+=item * Support
+
+C<Apache::UploadMeter> should work (that's an exercise I might take
+on) but was written in 2007 and does not appear to have much support
+these days.  You can find C<Apach2::Upload::Progress> in my L<github repo|https://github.com/rlauer6/perl-cgi-upload.git>. Log issues there and as always PRs welcomed. ;-)
+
+=back
+
+=head1 VERSION
+
+This documenation refers to version @PACKAGE_VERSION@.
+
+=head1 DETAILS
+
+=head2 Prerequisites
+
+=over 5
+
+=item Dependencies
+
+Perl module dependencies are listed in the F<requires.txt> file in the
+root of the project. A summary of requirement is shown here, but may
+be incomplete.
+
+=over 10
+
+=item * Apache 2+
+
+=item * mod_perl2
+
+=item * L<Apache2::Request>  I<including libapreq2>
+
+Version 2.17
+
+=back
+
+=item Configuration
+
+A configuration file in JSON formation is read once by the class when
+your Apache server is started. The file should be named
+F<apache2-upload-progress.json> and should be located in the path pointed
+to by the C<CONFIG_PATH> environment variable. You should set the in
+your Apache configuration as shown below.
+
+ PerlSetEnv CONFIG_PATH /var/www/config
+
+A sample configuration file and explanation of each variable follows.
+
+  {
+   "log4perl" : {
+     "config" : [
+       "log4perl.rootLogger = DEBUG, File",
+       "log4perl.appender.File = Log::Log4perl::Appender::File",
+       "log4perl.appender.File.filename = @apache_site_logdir@/apache2_upload_progress.log",
+       "log4perl.appender.File.mode = append",
+       "log4perl.appender.File.layout = PatternLayout",
+       "log4perl.appender.File.layout.ConversionPattern=[%d] (%r/%R) %M:%L - %m%n"
+     ],
+     "level" : "debug",
+   },
+   "upload" : {
+     "path" : "/var/www/spool",
+     "max_file_size" : 2147483648
+   },
+   "redis" : {
+     "server" : "redis",
+     "port" : "6379",
+     "timeout" : 90
+   },
+   "template" : {
+     "upload": {
+       "form" : "upload-form.tt",
+       "javascript" : "/javascript/upload.js",
+       "url" : "/upload",
+       "form_field" : "filename",
+       "max_files" : 15
+     },
+     "include_path" : "/var/www/include",
+     "absolute" : 1,
+     "interpolate" : 0
+   },
+   "session" : {
+     "cookie_name" : "session",
+     "timeout" : 15
+   }
+ }
+
+=item log4perl
+
+L<Log::Log4perl> configuration. Because the class can provide
+detailed output in debug mode and the Apache logger may be configured
+to escape new lines
+(L<https://stackoverflow.com/questions/1573912/why-does-my-apache2log-output-replace-newlines-with-n>)
+a separate log file can be used instead of logging using Apache's
+logger. If you would prefer that all messages to go to Apache's logs,
+remove the C<config> object from the C<log4perl> section. In that
+case, the class will only output debug message if Apache's log level
+is 'debug'.
+
+=item upload
+
+Specify the path and the maximum file size allowed in this section.
+
+=item redis
+
+I<The reference example utilizes a Redis server to implement caching of
+the upload status.>
+
+Configure the Redis server in this section. The C<timeout> value is
+the amount of time that cache entries should be allowed to exist. Once
+the client has selected a list of files and you have called the
+C<upload_init> endpoint, the clock starts.
+
+Unless you are only using only 1 web server your Redis server should
+be run on its own host. Even if you only have 1 web server you should
+probably provision a separate host for your Redis server. Web clients
+monitoring uploads will typically make calls to the C<upload_status>
+endpoint every fraction of a second or so meaning you might have
+hundreds of request coming into your server at the same time you are
+uploading data to it.
+
+=item template
+
+The C<upload_form> endpoint can be used to deliver a web form for
+uploading files. The project contains a sample form based on Bootstrap
+that is rendered using C<Template::Toolkit>. You can configure your
+own form here. C<include_path> is the path where you template will be
+found. The C<upload> section will be sent to
+C<Template::Toolkit::process()>.  You can put anything you'd like in
+this section based on your template's needs.
+
+=item session
+
+The C<session> section is used to specify the cookie name that
+contains your session id. The API endpoints look for the cookie you
+specify here in order to uniquely identify the session and ultimately
+the user performing the upload.
+
+The C<timeout> value is only used when
+deliverying the form to create a cookie. See L</upload_form> for more
+details about how you can deliver your own forms using the
+C<upload_form> endpoint.
+
+=over 10
+
+=back
+
+=item Sessions
+
+Presumably you are using this uploader as part of an application that
+may support multiple users. In order to identify uploads for
+individual clients the process looks for a cookie to use as a session
+identifier. The cookie is used as key when storing status information
+related to that session's file uploads. The name of the cookie is
+configurable.
+
+If a session cookie does not exist, API calls will return a 401 status.
+
+API endpoints will first look for a session cookie and if does not
+exist, will return a 401. Next, the method that implements the API
+endpoint wil call the C<validate_session()> method. You should
+subclass C<Apache2::Upload::Progress> and override this method to provide
+your own session validation routine.  The method should return a hash
+reference that contains at least two members:
+
+ session_id
+ prefix
+
+The C<upload> endpoint API will prepend the C<prefix> followed by a
+dash ('-') to the front of the filename. Typically your C<prefix>
+value should be a string or number that identifies the user or
+account that has uploaded the file. The identifier should only contain
+alphanumeric values.
+
+=back
+
+=head2 The Upload Steps
+
+The upload process should proceed as follows:
+
+=over 5
+
+=item 1. Send a list of files to be uploaded to the C<upload_init>
+endpoint. 
+
+Send a JSON array containing a hash of information for each file. The
+structure should look like this:
+
+ [
+  {
+    "filename" : "somefile.png",
+    "size" : 12378,
+    "index" : 0,
+    "type" : "video/webm"
+  },
+  ...
+ ]
+
+Typically this information is the information you would get by
+accessing the document's file upload element. Using jQuery you might do
+something like the snippet below to retrieve the list.
+
+ var files = $("#upload")[0].files;
+
+The return value from the C<upload_init> endpoint will be a JSON
+payload with the information you sent, plus some additional
+elements:
+
+=over 10
+
+=item id
+
+An MD5 hash key you will use later to access the status
+information for this file from the status payload.
+
+=item size_human
+
+A formatted human readable size you can use to display in a progress
+bar.
+
+=item init_time
+
+The time in seconds since the epoch of the intialization time. This
+value is currently not used.
+
+=back
+
+This API call will store the file list in a cache with a configurable
+expire time (if your caching implements expirations). If the web
+client does not upload the files before the expire time the cache will
+be emptied.
+
+After calling the endpoint you can immediately call the status
+endpoint although the file upload process will not begin until your
+web client begins sending the files.
+
+=item 2. Initiate the upload for each file.
+
+You should upload each file separately using the C<upload> endpoint,
+sending the file id returned in step 1. You can sent the id in a
+custom header (X-Upload-Id) or as a query string parameter.
+
+For example...
+
+  $.each(files, function(i, file) {
+    var data = new FormData();
+
+    data.append("filename", file);
+    
+    $.ajax({
+      url: "/upload",
+      headers: { 'X-Upload-Id' : file_list[i].id },
+      method: "POST",
+      type: "POST",
+      contentType: false,
+      processData: false,
+      cache: false,
+      data: data,
+      success: function(data) {
+        ...
+      },
+      error: function(data)  {
+        ...
+      }
+    });
+  });
+
+The return value of the upload call will be a JSON payload similar to
+the payload returned for each file when you call the C<upload_status> endpoint.
+
+=item 3. Monitor the upload progress.
+
+After successfully submitting all files for upload, you can begin
+monitoring the process by calling the C<upload_status> endpoint. The
+return value is a JSON payload containing a hash where each element
+holds the status of one of the files you sent in the initialization
+phase. The keys of the hash are the MD5 hash identifier for the file.
+
+=over 10
+
+=item filename
+
+=item index
+
+The original index you associated with this file.
+
+=item percent_complete
+
+A value between 0 and 100 representing the percentage completion for
+that file.
+
+=item elapsed_time
+
+The number of microseconds that has elapsed since the start of the upload.
+
+=item elapsed_time_formatted
+
+The number of seconds to 3 decimal places that has elapsed since the
+start of the upload.
+
+=back
+
+  $.ajax({
+    url: "/upload/status",
+    success: function(data) {
+      // display progress info for each file      
+    }
+  });
+
+=item 4. Optionally remove the upload status from the cache.
+
+Once all files have been uploaded successfully, call the
+C<upload_reset> endpoint in order to clear the cache. If you do not
+clear the cache it will automatically be cleared when the configured
+timeout period has elapsed.
+
+You may want to clear the cache immediately after successful
+uploads. If the user is fast enough and initiates another upload
+session, the previously cached information might be returned along
+with new cached data.
+
+=back
+
+=head1 METHODS AND SUBROUTINES
+
+None of these methods should be called directly. They should be exposed
+as URL endpoints in your Apache configuration.
+
+=head2 upload_init
+
+Initializes an upload session.
+
+=head2 upload
+
+Uploads a file to the webserver.
+
+=head2 upload_status
+
+Returns a JSON payload with information on the progress of each file
+being uploaded.
+
+=head2 upload_reset
+
+Clears the cache for the current session.
+
+=head2 upload_version
+
+Returns the version of the API.
+
+=head2 upload_form
+
+Endpoint to deliver a custom form for uploading files.
+
+TODO
+
+=head1 OVERRIDING METHODS
+
+The behavior of the uploader in your application can be controlled by
+overriding certain methods.
+
+=head2 validate_session(r, session-id)
+
+The C<validate_session()> method should return a hash with at least to
+elements (C<session_id>, C<prefix>). See L</Sessions>.
+
+=head2 create_cookie
+
+The C<create_cookie()> method is called to create a session cookie if
+one does not exist when delivering the form using the C<upload_form>
+endpoint.
+
+=head1 APACHE CONFIGURATION
+
+TODO
+
+=head1 REPOSITORY
+
+L<https://github.com/rlauer6/perl-upload-cgi.git>
+
+=head1 SEE ALSO
+
+L<Apache2::Request>, L<Apache2::Upload>
+
+=head1 AUTHOR
+
+Rob Lauer - <rlauer6@comcast.net>
+
+=cut

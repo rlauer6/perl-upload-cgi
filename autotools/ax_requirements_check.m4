@@ -1,6 +1,7 @@
 AC_DEFUN([AX_REQUIREMENTS_CHECK],[
   ads_PERL_MODULE([Amazon::Credentials], [], [1.1.16])
   ads_PERL_MODULE([Amazon::S3], [], [0.59])
+  ads_PERL_MODULE([Carp::Always], [], [])
   ads_PERL_MODULE([Class::Accessor::Fast], [], [0.51])
   ads_PERL_MODULE([Config::IniFiles], [], [3.000003])
   ads_PERL_MODULE([Data::UUID], [], [1.226])

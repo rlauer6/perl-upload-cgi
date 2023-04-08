@@ -1,3 +1,5 @@
+docker/docker-compose.yaml
+docker/httpd.conf
 **/*.cgi
 **/Makefile
 config.log
@@ -5,6 +7,7 @@ config.status
 configure
 config/inotify.service
 **/*.cfg
+**/*.pc
 config/*.json
 autotools/missing
 autotools/install-sh

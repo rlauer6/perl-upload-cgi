@@ -1,0 +1,13 @@
+SetEnv     CONFIG_PATH @apache_site_configdir@
+PerlSetEnv CONFIG_PATH @apache_site_configdir@
+
+LogLevel   trace8
+#LogLevel   info
+#LogLevel   debug 
+LogFormat  "%h %l %u %t \"%r\" %>s %O \"%{Referer}i\" \"%{User-Agent}i\"" combined
+ErrorLog   @apache_site_logdir@/error_log
+CustomLog  @apache_site_logdir@/access_log combined
+
+IncludeOptional @datadir@/@PACKAGE@/apache2-upload-progress-redis.conf
+
+AllowEncodedSlashes On

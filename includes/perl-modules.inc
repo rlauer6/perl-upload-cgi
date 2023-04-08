@@ -83,16 +83,32 @@ perl5lib_workflowdir = $(perl5libdir)/Workflow
 perl5lib_workflow_DATA = $(GWORKFLOWMODULES)
 
 # +--------------------------------------------+
-# | Apache/Bootstrap                           |
+# | Apache2/Upload                             |
 # +--------------------------------------------+
 
-APACHEBOOTSTRAPMODULES = \
-    Apache/Bootstrap/Upload.pm.in
+APACHE2UPLOADMODULES = \
+    Apache2/Upload/Progress.pm.in
 
-GAPACHEBOOTSTRAPMODULES = $(APACHEBOOTSTRAPMODULES:.pm.in=.pm)
+GAPACHE2UPLOADMODULES = $(APACHE2UPLOADMODULES:.pm.in=.pm)
 
-perl5lib_apachebootstrapdir = $(perl5libdir)/Apache/Bootstrap
-perl5lib_apachebootstrap_DATA = $(GAPACHEBOOTSTRAPMODULES)
+$(GAPACHE2UPLOADMODULES): $(GAPACHE2UPLOADPROGRESSMODULES)
+
+perl5lib_apache2uploaddir = $(perl5libdir)/Apache2/Upload
+
+perl5lib_apache2upload_DATA = $(GAPACHE2UPLOADMODULES)
+
+# +--------------------------------------------+
+# | Apache2/Upload/Prorgress                   |
+# +--------------------------------------------+
+
+APACHE2UPLOADPROGRESSMODULES = \
+    Apache2/Upload/Progress/Redis.pm.in
+
+GAPACHE2UPLOADPROGRESSMODULES = $(APACHE2UPLOADPROGRESSMODULES:.pm.in=.pm)
+
+perl5lib_apache2uploadprogressdir = $(perl5libdir)/Apache2/Upload/Progress
+
+perl5lib_apache2uploadprogress_DATA = $(GAPACHE2UPLOADPROGRESSMODULES)
 
 # +--------------------------------------------+
 # | Workflow/S3                                |
@@ -109,4 +125,6 @@ perl5lib_workflows3_DATA = $(GWORKFLOWS3MODULES)
 ALLMODULES = \
     $(PERLMODULES) \
     $(WORKFLOWMODULES) \
-    $(WORKFLOWS3MODULES)
+    $(WORKFLOWS3MODULES) \
+    $(APACHE2UPLOADMODULES) \
+    $(APACHE2UPLOADPROGRESSMODULES)

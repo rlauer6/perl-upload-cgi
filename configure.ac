@@ -88,6 +88,10 @@ do_subst_command='do_subst = sed \
   -e '"'"'s,[@]apache_site_sessiondir[@],$(apache_site_sessiondir),g'"'"' \
   -e '"'"'s,[@]apache_site_cachedir[@],$(apache_site_cachedir),g'"'"' \
   -e '"'"'s,[@]apache_site_perl5libdir[@],$(apache_site_perl5libdir),g'"'"' \
+  -e '"'"'s,[@]apache_port[@],$(apache_port),g'"'"' \
+  -e '"'"'s,[@]apache_loglevel[@],$(apache_loglevel),g'"'"' \
+  -e '"'"'s,[@]httpd_confdir[@],$(httpd_confdir),g'"'"' \
+  -e '"'"'s,[@]httpd_confddir[@],$(httpd_confddir),g'"'"' \
 \
   -e '"'"'s,[@]apache_site_work_dir[@],$(apache_site_work_dir),g'"'"' \
   -e '"'"'s,[@]apache_site_spool_dir[@],$(apache_site_spool_dir),g'"'"' \
@@ -180,10 +184,9 @@ AC_ARG_WITH(
         ]
 )
 
-AX_REQUIRED_PERL_MODULES
-
 AC_SUBST([perl5libdir])
 
+AX_REQUIRED_PERL_MODULES
 APACHE_CONFIG
 AX_DISTCHECK_HACK
 AX_DEPS_CHECK
@@ -240,6 +243,8 @@ AC_ARG_WITH([license],[  --with-license (defaults to GNU Public License)],
         [LICENSE=["GNU Public License"]]
 )
 
+AC_SUBST([LICENSE])
+
 AC_ARG_WITH([redis_server],[  --with-redis-server ],
 	[redis_server=$withval],
         [redis_server=localhost]
@@ -253,8 +258,6 @@ AC_ARG_WITH([redis_port],[  --with-redis-port ],
 )
 
 AC_SUBST([redis_port])
-
-AC_SUBST([LICENSE])
 
 AC_ARG_WITH([architecture],[  --with-architecture (defaults to noarch)],
 	[ARCHITECTURE=$withval],
@@ -277,6 +280,7 @@ AC_CONFIG_FILES([
     src/main/bash/bin/Makefile
     config/Makefile
     resources/Makefile
+    docker/Makefile
 ])
 
 AC_OUTPUT
@@ -297,6 +301,11 @@ printf "                          bash: %s\n" "`__poor_mans_expand_file_name BAS
 printf "\n"
 printf "                  Architecture: %s\n" "`__poor_mans_expand_file_name ARCHITECTURE`"
 printf "                       License: %s\n" "`__poor_mans_expand_file_name LICENSE`"
+printf "\n"
+printf "                   Apache port: %s\n" "`__poor_mans_expand_file_name apache_port`"
+printf "               Apache log level: %s\n" "`__poor_mans_expand_file_name apache_loglevel`"
+printf "               Apache site dir: %s\n" "`__poor_mans_expand_file_name apache_vhostdir`"
+dnl printf "               Apache: %s\n" "`__poor_mans_expand_file_name apache_`"
 printf "\n"
 printf "                    Maintainer: ${PACKAGE_BUGREPORT}\n"
 printf "                       Version: ${PACKAGE_VERSION}\n"

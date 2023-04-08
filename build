@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+#
+# script to provision conatainer w/Perl dependencies
+#
+# after bringing up the Docker compose stack...
+
+tarball=$(ls -1 /tmp/scratch/perl-upload*.tar.gz 2>/dev/null | tail -1)
+
+if test -z "$tarball"; then
+    >&2 echo "no tarball found"
+    exit
+fi
+
+tar xfv $tarball
+
+tarball=$(basename $tarball)
+
+cd ${tarball%%.tar.gz}
+
+if [ "$1" = "cpan" ]; then
+    ./configure \
+        --disable-perldeps \
+        --disable-deps
+    
+    make cpan
+elif test -z "$1"; then
+
+    ./configure \
+        --with-apache-vhostdir=/var/www \
+        --with-apache-port=8080 \
+        --with-apache-loglevel=debug \
+        --sysconfdir=/etc \
+        --localstatedir=/var \
+        --with-s3-host=http://s3.localhost.localstack.cloud:4566 \
+        --with-bucket-prefix=uploads \
+        --with-redis-server=redis
+
+    make && make install
+    
+    AWS_ACCESS_KEY_ID=test \
+    AWS_SECRET_ACCESS_KEY=test \
+      inotify.pl --config /etc/workflow/config.d/upload.cfg
+fi

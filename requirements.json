@@ -6,6 +6,7 @@
    "Data::UUID" : "1.226",
    "Redis" : "1.999",
    "Class::Accessor::Fast" : "0.51",
+   "Carp::Always" : "",
    "JSON" : "4.07",
    "File::HomeDir" : "1.006",
    "Readonly" : "2.05",

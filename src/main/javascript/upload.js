@@ -2,10 +2,11 @@ var files_uploaded = 0;
 var intervalId;
 var file_list = [];
 var upload_time = 0;
+var debug = 1;
 
 $(function() {
 
-  console.log("starting...");
+  logit("starting...");
 
   $("#clear-btn").on("click", function(e) {
     e.preventDefault();
@@ -74,10 +75,10 @@ $(function() {
       var data = new FormData();
 
       data.append("filename", file);
-      data.append("index", i);
-            
+
       $.ajax({
-        url: "/cgi-bin/upload.cgi",
+        url: "/upload",
+        headers: { 'X-Upload-Id' : file_list[i].id },
         method: "POST",
         type: "POST",
         contentType: false,
@@ -97,8 +98,11 @@ $(function() {
           var file_completion_percent = Math.floor(100 * files_uploaded/files.length);
 
           update_progress_bar('progress-all-files', file_completion_percent);
+          update_progress_bar('progress-' + index, file_info.percent_complete);
           
           var elapsed_time = parseFloat(file_info.elapsed_time_formatted);
+
+          logit(file_info.elapsed_time_formatted);
           
           if ( elapsed_time  > upload_time ) {
             upload_time = elapsed_time;
@@ -106,7 +110,9 @@ $(function() {
               
           if ( files_uploaded  >= file_list.length ) {
             intervalId = clearInterval(intervalId);
+
             var num_uploaded = files_uploaded;    
+
             files_uploaded = 0;
             file_list = [];
             
@@ -119,6 +125,7 @@ $(function() {
             $("#progress-all-files").removeClass('progress-bar-striped');
             $("#progress-all-files").removeClass('progress-bar-animated');
 
+            reset_upload_status();
           }
           else {
             $("#progress-status").html("Uploaded " + files_uploaded + " of " + file_list.length);
@@ -135,6 +142,29 @@ $(function() {
   });
 
 });
+
+function logit(message) {
+
+  if (! debug ) {
+    return;
+  }
+  
+  console.log(message);
+}
+
+function reset_upload_status() {
+  
+  $.ajax( {
+    url: '/upload/reset',
+    method: 'GET',
+    type: 'GET',
+    success: function(data) {
+    },
+    error: function(data) {
+      alert('error resetting upload status');
+    }
+  });
+}
 
 // clear upload list and status
 function clear_uploads() {
@@ -154,16 +184,10 @@ function clear_uploads() {
 // fetch upload progress
 function get_upload_progress(files) {
   
-  var session_id = getCookie("SessionID");
-
   $.ajax({
-    url: "/cgi-bin/upload.cgi",
+    url: "/upload/status",
     method: "GET",
     type: "GET",
-    data: {
-      action : "fetch-status",
-      session_id : session_id
-    },
     success: function(data) {
       var files;
 
@@ -181,11 +205,17 @@ function get_upload_progress(files) {
         files = data.files;
       }
 
-      $.each(files, function(name, file_info) {
-
-        var filename = name;
+      logit(data);
+      
+      $.each(files, function(file_id, file_info) {
+        
+        var filename = file_info.filename;
         var id = file_info.index
         var percent_complete = file_info.percent_complete || "0";
+        
+        logit('         file_id: ' + file_id);
+        logit('              id: ' + id);
+        logit('percent_complete: ' + percent_complete);
         
         update_progress_bar('progress-' + id, percent_complete);
       });
@@ -276,27 +306,24 @@ function create_progress_bar_set(file_list) {
 // inititalize upload
 function init_upload (file_list) {
   
-  var data = {
-    action : "initialize-upload",
-    file_list : JSON.stringify(file_list)
-  };
-
   $.ajax(
     {
-      method: "GET",
-      url: "/cgi-bin/upload.cgi",
-      data: data,
+      method: "POST",
+      url: "/upload/init",
+      contentType: 'application/json',
+      data: JSON.stringify(file_list),
       success: function (data) {
         $("#upload-btn").attr("disabled", false);
         
         $.each(data, function(i, info) {
           file_list[info.index].size = info.size_human;
+          file_list[info.index].id = info.id;
         });
 
         create_progress_bar_set(file_list);
       },
       error: function (data) {
-        alert("Error initialing upload");
+        alert("Error initializing upload:" + data);
       }
     }
   );

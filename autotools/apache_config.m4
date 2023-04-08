@@ -174,4 +174,17 @@ AC_DEFUN([APACHE_CONFIG],[
     
     AC_SUBST([apache_group])
 
+    AC_ARG_WITH([apache_port],[  --with-apache-port ],
+    	[apache_port=$withval],
+        [apache_port=80]
+        )       
+
+   AC_SUBST([apache_port])
+
+    AC_ARG_WITH([apache_loglevel],[  --with-apache-loglevel ],
+    	[apache_loglevel=$withval],
+        [apache_loglevel=info]
+        )       
+
+    AC_SUBST([apache_loglevel])
 ])

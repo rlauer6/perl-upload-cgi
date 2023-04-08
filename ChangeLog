@@ -1,3 +1,71 @@
+Wed Apr  5 17:22:29 2023  Rob Lauer  <rlauer6@comcast.net>>
+
+	[1.1.0]:
+	* VERSION: bump
+	* TODO.md: new
+	* build: new
+	* .gitignore: add files built in docker dir
+	* src/main/perl/lib/Apache2/Upload/Progress.pm.in
+	- renamed from Apache/Bootstrap/Upload.pm.in
+	- updated to use mod_perl version exclusively
+	- major refactoring
+	- create Location directives during config phase
+	- use <UploadProgress> block for configuring class, config file
+	* src/main/perl/lib/Apache2/Upload/Progress/Redis.pm.in: new
+	* includes/perl-modules.inc: update for above changes
+	* autotools/ads_PERL_MODULE.m4: no strict 'refs"
+	* autotools/apache_config.m4
+	- + --with-apache-port
+	- + --with-apache-loglevel
+	* autotools/ax_requirements_check.m4: Carp::Always
+	* requirements.json: likewise
+	* requirements.txt: likewise
+	* config/Makefile.am
+	- renamed upload.json.in, apache-upload-progress.json.in
+	- add apache2-upload-progress-redis.conf
+	- add perl-upload-cgi.conf.in
+	* config/apache2-upload-progress.json.in
+	- renamed from upload.json.in
+	- renamed log section log4perl
+	- add timeout to redis and upload sections
+	- add bootstrap, jquery sections
+	* configure.ac
+	- print apache configuration
+	(do_subst):
+	- added apache_port, apache_loglevel, httpd_confdir, httpd_confddir
+	(AC_CONFIG_FILES): added docker/Makefile
+	* includes/apache-directories.inc
+	- added httpd_confdir, httpd_confddir
+	* resources/templates/upload-form.tt
+	- use config vars for javascript file and endpoints
+	* src/main/javascript/upload.js
+	- send X-Upload-Id header
+	- use new endpoints (/upload)
+	- update progress bar for individual files on completion
+	- reset upload status on completion
+	(logit): new
+	(reset_upload_status): new
+	(get_upload_status):
+	- no need to send session_id
+	- keys are now file id
+	(init_upload)
+	- use new endpoint
+	- POST not GET
+	- stash file id in file list array
+	* src/main/perl/cgi-bin/upload.pl.in: VERSION
+
+	[Workflow::S3::Uploader]:
+	* src/main/perl/lib/Workflow/S3/Uploader.pm.in
+	(handler): use prefix to partition key when uploading
+
+	[docker image]:
+	* config/apache2-upload-progress-redis.conf: new
+	* docker/Dockerfile: new
+	* docker/Makefile.am: new
+	* docker/docker-compose.yaml.in: new
+	* docker/httpd.conf.in: new
+	* docker/perl-upload-cgi.conf.in: new
+
 Mon Apr  3 18:14:52 2023  Rob Lauer  <rlauer6@comcast.net>
 
 	[1.0.2]

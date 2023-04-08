@@ -61,20 +61,20 @@ sub handler {
 
   my $name     = $event->name;
   my $fullname = $event->fullname;
-  my $account;
+  my $prefix;
 
   $self->get_logger->info( sprintf 'event received for %s', $fullname );
 
-  if ( $name =~ /^(\d+)-(.*?)$/xsm ) {
-    ( $account, $name ) = ( $1, $2 );
+  if ( $name =~ /^([^\-]+?)-(.*)$/xsm ) {
+    ( $prefix, $name ) = ( $1, $2 );
   }
   else {
-    $account = 'trash';
+    $prefix = 'trash';
   }
 
   my $bucket_prefix = $self->get_bucket_prefix // $SLASH;
 
-  my $key = sprintf '%s/%s/%s', $bucket_prefix, $account, $name;
+  my $key = sprintf '%s/%s/%s', $bucket_prefix, $prefix, $name;
 
   $self->get_logger->info(
     sub {

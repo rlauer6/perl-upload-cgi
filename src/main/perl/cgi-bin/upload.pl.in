@@ -51,7 +51,7 @@ Readonly::Hash our %HTTP_CODES => (
   SERVER_ERROR => 500,
 );
 
-our $VERSION = '0.001';
+our $VERSION = '@PACKAGE_VERION@'; ## no critic (RequireInterpolation)
 
 {
   my $config;

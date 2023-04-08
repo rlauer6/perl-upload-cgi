@@ -12,5 +12,3 @@ dist_apache_site_include_DATA = \
 
 dist_resources_DATA = \
     $(TEMPLATES)
-
-all:

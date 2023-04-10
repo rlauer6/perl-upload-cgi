@@ -1,40 +1,29 @@
-<html>
-  <head>
-  
-    [% bootstrap=upload.bootstrap %]
-    <link rel="stylesheet" href="[% bootstrap.stylesheet %]" type="text/css" />
+<link rel="stylesheet" href="[% bootstrap.stylesheet %]" type="text/css" />
 
-     [% script=upload.jquery.script %]
-    <script type="text/javascript" src="[% script.src %]"
-      [%IF script.integrity %]integrity="[% script.integrity %]"[% END %]
-      [%IF script.crossorigin %]crossorigin="[% script.crossorigin %]">[% END%]
-    </script>
+<script type="text/javascript" src="[% jquery.javascript.src %]"
+        [%IF jquery.javascript.integrity %]integrity="[% jquery.javascript.integrity %]"[% END %]
+        [%IF jquery.javascript.crossorigin %]crossorigin="[% jquery.javascript.crossorigin %]">[% END%]
+</script>
 
-    <script type="text/javascript" src="[% upload.javascript %]"></script>
-  </head>
-  
-  <body>
-    <div class="container mt-3">
-      
-      <form method="POST" id="upload-form" enctype="multipart/form-data" action="[% upload.url %]">
-        
-        <div class="mb-3">
-          <input class="form-control" type="file" id="upload" multiple>
-        </div>
-      
-        <button class="btn btn-primary" id="upload-btn">Upload</button>
-        <button class="btn btn-secondary" id="clear-btn">Clear</button>
-      </form>
-      
-      <div id="progress-container">
-      </div>
-      
-      <div style="margin-top:5px;" id="progress-status">
-      </div>
+<script type="text/javascript" src="[% upload.javascript.src %]"></script>
+
+<div class="container mt-3">
+
+  <form method="POST" id="upload-form" enctype="multipart/form-data" action="[% upload.url %]">
+
+    <div class="mb-3">
+      <input class="form-control" type="file" id="upload" multiple>
     </div>
-    
-    <script type="text/javascript" src="[% bootstrap.script.src %]"></script>
-    
-  </body>
-</html>
 
+    <button class="btn btn-primary" id="upload-btn">Upload</button>
+    <button class="btn btn-secondary" id="clear-btn">Clear</button>
+  </form>
+
+  <div id="progress-container">
+  </div>
+
+  <div style="margin-top:5px;" id="progress-status">
+  </div>
+</div>
+
+<script type="text/javascript" src="[% bootstrap.javascript.src %]"></script>

@@ -7,8 +7,7 @@ use Redis qw();
 
 use English qw(-no_match_vars);
 use Data::Dumper;
-
-use Apache2::Module qw(add);
+use Apache2::Upload::Progress qw(get_config dumper);
 
 use Readonly;
 
@@ -23,27 +22,20 @@ our $VERSION = '@PACKAGE_VERSION@';
 
 use parent qw(Exporter);
 
+# - we export these methods because Apache2::Upload::Progress will not
+# 'use' this module, but rather 'require' it and then import the
+# :DEFAULT symbols
+# - this is to allow for run-time resolution of the class that will handle
+# caching of file upload status
+
 our @EXPORT = qw(
-  set_session_key
-  get_session_key
-  get_all_session_keys
-  get_upload_status
   flush_session_cache
-  init_cache
+  get_all_session_keys
+  get_session_key
+  get_upload_status
+  init_session_cache
+  set_session_key
 );
-
-# right now Apache2::Upload::Progress 'use's this module so we have
-# circular depdendcy...this allows perl -wc to compile and syntax
-# check this module in the Makefile..
-#
-# TODO: Apach2::Upload::Progress should not 'use' cache implementers
-# like this
-
-if ( !$COMPILING ) {
-  require Apache2::Upload::Progress;
-
-  Apache2::Upload::Progress->import(qw(get_config dumper));
-}
 
 ########################################################################
 sub set_session_key {
@@ -94,18 +86,17 @@ sub get_session_key {
 ########################################################################
   my ( $r, $id ) = @_;
 
-  print {*STDERR} Dumper( [ 'get_session_key' => [ $r, $id ] ] );
+  dumper( get_session_key => [ $r, $id ] );
 
   if ( !$r ) {
     print {*STDERR} "usage: get_session_key(r, id)\n";
 
     return;
   }
-  else {
-    print {*STDERR} Dumper($r);
+  elsif ( !$id ) {
+    $r->log->warn('no id');
 
-    return
-      if !$id || $id eq 'foo';
+    return;
   }
 
   return r_get_session_key( get_redis($r), $id );
@@ -120,11 +111,11 @@ sub get_all_session_keys {
 }
 
 ########################################################################
-sub init_cache {
+sub init_session_cache {
 ########################################################################
   my ($s) = @_;
 
-  print {*STDERR} "initializing cache\n";
+  $s && $s->log->info('...connecting to Redis server');
 
   return get_redis($s);
 }
@@ -143,7 +134,7 @@ sub get_redis {
 
   $REDIS = eval {
     if ( !$config->get_redis ) {
-      my $errmsg = 'invalid configuration, no "redis" configuration';
+      my $errmsg = '...invalid configuration, no "redis" configuration';
 
       $r->log->error($errmsg);
       die $errmsg;
@@ -162,11 +153,11 @@ sub get_redis {
   if ( !$REDIS || $EVAL_ERROR ) {
     $r
       && $r->log->error(
-      'could not initialize redis client: ' . $EVAL_ERROR );
+      '...could not initialize Redis client: ' . $EVAL_ERROR );
   }
   else {
     $r && $r->log->info(
-      sprintf 'redis client initialized for %s:%s',
+      sprintf '...Redis client initialized: connected to: %s:%s',
       @{ $config->get_redis }{qw(server port)},
     );
   }

@@ -1,0 +1,109 @@
+package Apache2::Upload::Progress::Constants;
+
+use strict;
+use warnings;
+
+use Log::Log4perl::Level;
+
+use Readonly;
+
+# defaults
+Readonly our $DEFAULT_SESSION_TIMEOUT => 15;
+
+# booleans
+Readonly our $TRUE  => 1;
+Readonly our $FALSE => 0;
+
+# chars
+Readonly our $EMPTY       => q{};
+Readonly our $SLASH       => q{/};
+Readonly our $EQUALS_SIGN => q{=};
+Readonly our $DASH        => q{-};
+
+# values
+Readonly::Hash our %LOG4PERL_LEVELS => (
+  trace => $TRACE,
+  debug => $DEBUG,
+  info  => $INFO,
+  error => $ERROR,
+  warn  => $WARN,
+);
+
+Readonly::Array our @REQUIRED_CONFIGURATION_VARS => qw(
+  allow_edit
+  log4perl
+  redis
+  session
+  template
+  upload
+);
+
+Readonly::Array our @REQUIRED_METHODS => qw(
+  set_session_key
+  get_session_key
+  get_all_session_keys
+  get_upload_status
+  flush_session_cache
+  init_session_cache
+);
+
+Readonly our @API_ENDPOINTS => (
+  '/upload'         => 'upload',
+  '/upload/config'  => 'upload_config',
+  '/upload/init'    => 'upload_init',
+  '/upload/form'    => 'upload_form',
+  '/upload/reset'   => 'upload_reset',
+  '/upload/version' => 'upload_version',
+  '/upload/status'  => 'upload_status',
+);
+
+Readonly our $LOCATION_TEMPLATE => <<'END_OF_LOCATION';
+<Location %s>
+    SetHandler perl-script
+    PerlResponseHandler Apache2::Upload::Progress->%s
+    AcceptPathInfo On
+</Location>
+END_OF_LOCATION
+
+use parent qw(Exporter);
+
+our %EXPORT_TAGS = (
+  chars => [
+    qw(
+      $EMPTY
+      $SLASH
+      $EQUALS_SIGN
+      $DASH
+    )
+
+  ],
+  booleans => [
+    qw(
+      $TRUE
+      $FALSE
+    )
+
+  ],
+  defaults => [
+    qw(
+      $DEFAULT_SESSION_TIMEOUT
+    )
+
+  ],
+  values => [
+    qw(
+      $LOCATION_TEMPLATE
+      @REQUIRED_METHODS
+      @REQUIRED_CONFIGURATION_VARS
+      %LOG4PERL_LEVELS
+      @API_ENDPOINTS
+    )
+  ],
+);
+
+our @EXPORT_OK = map { @{ $EXPORT_TAGS{$_} } } keys %EXPORT_TAGS;
+$EXPORT_TAGS{all} = [@EXPORT_OK];
+
+1;
+
+__END__

@@ -89,9 +89,10 @@ perl5lib_workflow_DATA = $(GWORKFLOWMODULES)
 APACHE2UPLOADMODULES = \
     Apache2/Upload/Progress.pm.in
 
+
+
 GAPACHE2UPLOADMODULES = $(APACHE2UPLOADMODULES:.pm.in=.pm)
 
-$(GAPACHE2UPLOADMODULES): $(GAPACHE2UPLOADPROGRESSMODULES)
 
 perl5lib_apache2uploaddir = $(perl5libdir)/Apache2/Upload
 
@@ -102,7 +103,12 @@ perl5lib_apache2upload_DATA = $(GAPACHE2UPLOADMODULES)
 # +--------------------------------------------+
 
 APACHE2UPLOADPROGRESSMODULES = \
+    Apache2/Upload/Progress/Constants.pm \
     Apache2/Upload/Progress/Redis.pm.in
+
+Apache2/Upload/Progress/Redis.pm: Apache2/Upload/Progress.pm
+
+Apache2/Upload/Progress.pm: Apache2/Upload/Progress/Constants.pm
 
 GAPACHE2UPLOADPROGRESSMODULES = $(APACHE2UPLOADPROGRESSMODULES:.pm.in=.pm)
 

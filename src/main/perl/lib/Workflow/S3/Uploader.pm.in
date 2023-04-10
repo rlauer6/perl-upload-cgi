@@ -15,6 +15,7 @@ use Getopt::Long qw(:config no_ignore_case);
 use Log::Log4perl;
 use Log::Log4perl::Level;
 use Linux::Inotify2;
+use Workflow::Inotify::Handler qw(boolean);
 
 use Readonly;
 
@@ -59,11 +60,13 @@ sub handler {
   return
     if $event->mask != IN_CLOSE_WRITE;
 
-  my $name     = $event->name;
+  my $name = $event->name;
+
   my $fullname = $event->fullname;
-  my $prefix;
 
   $self->get_logger->info( sprintf 'event received for %s', $fullname );
+
+  my $prefix;
 
   if ( $name =~ /^([^\-]+?)-(.*)$/xsm ) {
     ( $prefix, $name ) = ( $1, $2 );
@@ -78,7 +81,7 @@ sub handler {
 
   $self->get_logger->info(
     sub {
-      return sprintf 'attempting to store object to s3://%s/%s',
+      return sprintf 'storing object to s3://%s/%s',
         $self->get_bucket_name, $key;
     }
   );
@@ -91,9 +94,16 @@ sub handler {
     $self->get_logger->error(
       sub {
         return Dumper(
-          [ $bucket->err, $bucket->errstr, $bucket->last_response ] );
+          [ error         => $bucket->err,
+            message       => $bucket->errstr,
+            last_response => $bucket->last_response,
+          ]
+        );
       }
     );
+  }
+  else {
+    unlink $fullname;
   }
 
   return;
@@ -169,9 +179,38 @@ sub init_s3 {
 
   $self->set_s3($s3);
 
-  $self->set_bucket( $s3->bucket( { bucket => $bucket_name } ) );
+  my $bucket = $self->check_bucket();
 
-  return $self;
+  $self->set_bucket($bucket);
+}
+
+########################################################################
+sub check_bucket {
+########################################################################
+  my ($self) = @_;
+
+  my $s3          = $self->get_s3;
+  my $bucket_name = $self->get_bucket_name;
+
+  my $bucket = $s3->bucket( { bucket => $bucket_name } );
+
+  my $bucket_list = eval { $bucket->list or die $s3->errstr };
+
+  # make sure bucket exists, try creating bucket if it does not exist
+  if ( $EVAL_ERROR =~ /does\snot\sexist/xsmi ) {
+
+    $self->get_logger->error( sprintf 'bucket: %s does not exist',
+      $bucket_name );
+
+    if ( boolean( $self->get_create_bucket ) ) {
+      $self->get_logger->error( sprintf 'creating bucket: %s', $bucket_name );
+
+      $bucket = $s3->add_bucket( { bucket => $bucket_name } )
+        or die $s3->errstr;
+    }
+  }
+
+  return $bucket;
 }
 
 ########################################################################

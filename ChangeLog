@@ -1,3 +1,76 @@
+Mon Apr 10 15:17:32 2023  Rob Lauer  <rlauer6@comcast.net>
+
+	[1.1.1]:
+	* VERSION: bump
+	* config/upload.cfg.in: create_bucket
+	* src/main/perl/lib/Apache2/Upload/Progress.pm.in
+	- pod updates
+	- move constants to Apache2::Upload::Constants.pm.in
+	- use tags for constants in Apache2::Const
+	(check_class): renamed to below
+	(is_progress_enabled): new from above
+	(check_path): rename to below
+	(is_path_writable): new from check_path()
+	(dispatch)
+	- instantiate req if it doesn't exist
+	- add upload_config endpoint
+	(upload_version)
+	- use is_progre
+	(upload_form)
+	- return HTTP error if no_cookie_error set && no cookie found
+	(upload_config): new
+	(upload_reset)
+	- debug message missing argument ($r)
+	(upload)
+	- additional debug messages
+	- refactor, breakup into functions
+	- save metadata
+	(parse_accept_headers): new
+	(list_endpoints): new
+	(list_handlers): new
+	(post_config)
+	- refactored, breakup into functions
+	(load_progress_class): new
+	(get_config_filename): new
+	(init_config)
+	- use above method
+	- add required configuration vars in case someone removes one
+	(save_config): new
+	(get_json_payload): new
+	(output_text): accept hash of args
+	(output_json): likewise
+	(output_html): likewise
+	(process_template): accept name argument
+	(get_upload_form)
+	- refactored, breakup into functions
+	(create_default_upload_form): new
+	(get_config_form): new
+	(validate_session)
+	- make session_id optional, retrieve if not present
+	(boolean): new
+	* src/main/perl/lib/Workflow/S3/Uploader.pm.in
+	(handler)
+	- remove file if successfully uploaded
+	(init_s3)
+	- check for bucket, create bucket if config flag set
+	(check_bucket): new
+	* config/apache2-upload-progress.json.in
+	- added allow_edit variable to control configuration editing
+	* config/perl-upload-cgi.conf.in
+	- write logs to console
+	- trace for debugging
+	* includes/perl-modules.inc
+	- add Apache2::Upload::Progress::Constants.pm.in to build
+	* resource/templates/config-form.tt: new
+	* resources/Makefile.am
+	- add aove config-form.tt to build
+	* resources/templates/upload-form.tt
+	- reorganized template section of config to support multiple templates
+	* src/main/perl/lib/Apache2/Upload/Progress/Constants.pm.in: new
+	* src/main/perl/lib/Apache2/Upload/Progress/Redis.pm.in
+	(get_session_key): use dumper, $r->log, not print
+	(init_cache): renamed to init_session_cache()
+
 Wed Apr  5 17:22:29 2023  Rob Lauer  <rlauer6@comcast.net>>
 
 	[1.1.0]:

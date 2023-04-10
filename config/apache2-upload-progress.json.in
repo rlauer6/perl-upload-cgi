@@ -1,4 +1,5 @@
 {
+    "allow_edit" : "yes",
     "log4perl" : {
         "config" : [
             "log4perl.rootLogger = DEBUG, File",
@@ -12,8 +13,12 @@
     },
     "upload" : {
         "path" : "@apache_site_spooldir@",
-        "max_file_size" : 2147483648,
-        "timeout" : 60
+        "max_file_size" : "1G",
+        "temp_dir" : "/tmp",
+        "timeout" : 60,
+        "fix_filename": "yes",
+        "metadata" : "yes",
+        "copy" : "no"
     },
     "redis" : {
         "server" : "@redis_server@",
@@ -21,25 +26,34 @@
         "timeout" : 60
     },
     "template" : {
+        "jquery" : {
+            "javascript" : {
+                "src" : "https://code.jquery.com/jquery-3.6.3.min.js",
+                "integrity" : "sha256-pvPw+upLPUjgMXY0G+8O0xUf+/Im1MZjXxxgOcBQBXU=",
+                "crossorigin" : "anonymous"
+            }
+        },
+        "bootstrap" : {
+            "stylesheet" : "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css",
+            "javascript" : {
+                "src" : "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"
+            }
+        },
         "upload": {
             "form" : "upload-form.tt",
-            "javascript" : "/javascript/upload.js",
+            "javascript" : {
+                "src" : "/javascript/upload.js"
+            },
             "url" : "/upload",
             "form_field" : "filename",
-            "max_files" : 15,
-            "bootstrap" : {
-                "stylesheet" : "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css",
-                "script" : {
-                    "src" : "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"
-                }
+            "max_files" : 15
+        },
+        "config": {
+            "form" : "config-form.tt",
+            "javascript": {
+                "src" : "/javascriopt/upload-config.js"
             },
-            "jquery" : {
-                "script" : {
-                    "src" : "https://code.jquery.com/jquery-3.6.3.min.js",
-                    "integrity" : "sha256-pvPw+upLPUjgMXY0G+8O0xUf+/Im1MZjXxxgOcBQBXU=",
-                    "crossorigin" : "anonymous"
-                }
-            }
+            "url" : "/upload/config"
         },
         "include_path" : "@apache_site_includedir@",
         "absolute" : 1,

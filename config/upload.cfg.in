@@ -18,6 +18,7 @@ profile       = @profile@
 bucket_name   = @bucket_name@
 bucket_prefix = @bucket_prefix@
 region        = @region@
+create_bucket = yes
 
 log4perl_conf =<<END_OF_CONF
 log4perl.rootLogger = DEBUG, File

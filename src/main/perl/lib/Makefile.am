@@ -17,7 +17,10 @@ dist_noinst_DATA = $(ALLMODULES)
 test: $(GALLMODULES)
 	prove $(PERLINCLUDE) -v t/
 
-all:
+README.md: Apache2/Upload/Progress.pm
+	$(POD2MARKDOWN) $< > $@
+
+all: README.md
 
 CLEANFILES = $(GALLMODULES) $(GPERLCRITIC_PM)
 

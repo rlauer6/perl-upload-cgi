@@ -5,13 +5,13 @@ to test the POC.
 
 # How the POC Works
 
-See (README.md)[README.md] for more details on how the POC works,
+See [README.md](README.md) for more details on how the POC works,
 however as a reminder...
 
-* an HTML page is created by
-  [`upload.cgi`](src/main/perl/cgi-bin/upload.pl.in) that allows a
-  user to upload files to a webserver (and eventually Amazon S3). The
-  page is constructed using some Javascript and Bootstrap elements.
+* an HTML page with an upload for is created by visiting
+  `/upload/form`. This forms allows a user to upload files to a
+  webserver (and eventually Amazon S3). The page is constructed using
+  some Javascript and Bootstrap elements.
 * files are uploaded to a local directory on the web server. The
   directory is monitored by a Linux `inotify` process.
 * the `inotify` process responds to files being placed in the watched
@@ -20,24 +20,24 @@ however as a reminder...
   [`Workflow::Inotify`](https://metacpan.org/pod/Workflow::Inotify)
   and the Perl module included in this project
   [`Workflow::S3::Uploader`](src/main/perl/lib/Workflow/S3/Uploader.pm.in).
-* a Redis cache is used to store data regarding each file as it is
-  being uploaded. The upload page uses AJAX calls to retrieve status
+* a Redis cache is used to store the progress of files as they being
+  uploaded. The upload page uses Ajax calls to retrieve status
   information regarding each file's upload progress from the Redis
   cache
 * Javascript on the upload page updates the Bootstrap progress bars
-  using the data return by the AJAX call to retrieve file upload progress
+  using the data return by the Ajax call to retrieve file upload progress
 
 # Requirements
 
-* Web server running Apache
-* Redis server running on same server (port 6379)
+* A web server running Apache and `mod_perl`
+* A Redis server
 * [Localstack](https://localstack.cloud/) running on port 4566 (used to mock Amazon S3)
 
 # Perl Module Requirements
 
 Module versions reflect what I test against in my dev environment.
 Unless specifically indicated by >= you may find that using earlier
-versions of these modules also work.
+versions of these modules will also work.
 
 | Module | Version |
 | ------ | ------- |
@@ -67,13 +67,118 @@ versions of these modules also work.
 1. Start LocalStack (if you are mocking the S3 service)
 1. Start the `inotify` daemon
 
+The following description assumes you are running the POC in a
+Dockerized enviroment using the `docker-compose` configuration
+provided in the project.
+
+Login to the web server.
+
+```
+docker exec -it docker_web_1 /bin/bash
+```
+
+A script ([build](build)) has been provided that you can run after
+producing a tarball and copying it to your web server. See [Building
+the Distribution Package](#building-the-distribution-package)) for
+details on how to create a tarball.
+
+Hint: I typically map a local temporary directory to the Docker container's
+ `/tmp/scratch` directory and copy the tarball and the `build` script there.
+
+```
+ #!/usr/bin/env bash
+ #
+ # script to provision container w/Perl dependencies
+ #
+ # after bringing up the Docker compose stack...
+ 
+ tarball=$(ls -1 /tmp/scratch/perl-upload*.tar.gz 2>/dev/null | tail -1)
+ 
+ if test -z "$tarball"; then
+     >&2 echo "no tarball found"
+     exit
+ fi
+ 
+ tar xfv $tarball
+ 
+ tarball=$(basename $tarball)
+ 
+ cd ${tarball%%.tar.gz}
+ 
+ if [ "$1" = "cpan" ]; then
+     ./configure \
+         --disable-perldeps \
+         --disable-deps
+     
+     make cpan
+ elif test -z "$1"; then
+ 
+     ./configure \
+         --with-apache-vhostdir=/var/www \
+         --with-apache-port=8080 \
+         --with-apache-loglevel=trace8 \
+         --sysconfdir=/etc \
+         --localstatedir=/var \
+         --with-s3-host=http://s3.localhost.localstack.cloud:4566 \
+         --with-bucket-prefix=uploads \
+         --with-redis-server=redis \
+         --enable-apache-log-console
+ 
+     make && make install
+     
+     AWS_ACCESS_KEY_ID=test \
+     AWS_SECRET_ACCESS_KEY=test \
+       inotify.pl --config /etc/workflow/config.d/upload.cfg
+ fi
+```
+
+Install Perl dependencies from CPAN first...
+
+```
+/tmp/scratch/build cpan
+```
+
+Then install the application...
+
+```
+/tmp/scratch/build
+```
+
+After running the `build` scripts `graceful`ly restart Apache. Note
+that if you use `restart` instead of `graceful` you will be booted out
+of the container..
+
+```
+apachectl graceful
+```
+Check the status of the `inotify` process which uploads files to
+LocalStack.
+
+```
+ps -ef | grep inotify
+```
+
+Check the log file for any errors.
+
+```
+less /var/log/perl-upload-cgi.log
+less /var/www/log/perl-upload-cgi.log
+```
 # Hints and Reminders
 
-# `docker-compose`
+## Running in a Dockerized Environment
 
 ```
 version: "3.9"
 services:
+  redis:
+    image: redis/redis-stack-server
+    networks:
+      default:
+        aliases:
+          - redis
+    environment:
+      - ALLOW_EMPTY_PASSWORDS=yes
   localstack:
     container_name: "${LOCALSTACK_DOCKER_NAME-localstack_main}"
     image: localstack/localstack
@@ -82,66 +187,42 @@ services:
       default:
         aliases:
           - s3.localhost.localstack.cloud
-          - net-amazon-s3-test-test.localhost.localstack.cloud
+          - test-bucket.s3.localhost.localstack.cloud
     #network_mode: bridge
     ports:
       - "127.0.0.1:4510-4530:4510-4530"
       - "127.0.0.1:4566:4566"
       - "127.0.0.1:4571:4571"
     environment:
-      - SERVICES=s3,ssm,secretsmanager,kms,sqs,ec2,events,sts,logs
+      - SERVICES=s3
       - DEBUG=${DEBUG-}
       - DATA_DIR=${DATA_DIR-}
-      - LAMBDA_EXECUTOR=${LAMBDA_EXECUTOR-}
       - HOST_TMP_FOLDER=${TMPDIR:-/tmp/}localstack
       - DOCKER_HOST=unix:///var/run/docker.sock
     volumes:
       - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
       - "/var/run/docker.sock:/var/run/docker.sock"
-      
-  db:
-    image: mysql:5.7
-    restart: always
-    environment:
-      MYSQL_DATABASE: 'bedrock'
-      MYSQL_USER: 'fred'
-      MYSQL_PASSWORD: 'flintstone'      # Password for root access
-      MYSQL_ROOT_PASSWORD: 'bedrock'
-    ports:
-      - '3306:3306'
-    expose:
-      - 3306
-    volumes:
-      - my-db:/var/lib/mysql
-      - /tmp/mysqld:/var/run/mysqld
   web:
     read_only: false
     build:
-      context: ${BEDROCK:?set BEDROCK}/docker
+      context: ${PWD}
       dockerfile: ${PWD}/Dockerfile
-    image: "bedrock:latest"
+    image: "perl-upload-cgi:latest"
     ports:
       - '8080:8080'
     expose:
       - 8080
     entrypoint: ["/usr/sbin/apachectl", "-D", "FOREGROUND"]
     volumes:
-      - ${HOME:?set HOME}/git/openbedrock/docker/httpd.conf:/etc/httpd/conf/httpd.conf
-      - ${HOME:?set HOME}/git/openbedrock/docker/perl_bedrock.conf:/etc/httpd/conf.d/perl_bedrock.conf
-      - ${HOME:?set HOME}/git/openbedrock/docker/mysql-session.xml:/usr/lib/bedrock/config.d/startup/mysql-session.xml
-      - ${HOME:?set HOME}/git/openbedrock/docker/redis-session.xml:/usr/lib/bedrock/config.d/startup/redis-session.xml
-      - ${HOME:?set HOME}/git/openbedrock/docker/data-sources.xml:/usr/lib/bedrock/config/data-sources.xml
-      - ${HOME:?set HOME}/git/openbedrock/docker/tagx.xml:/usr/lib/bedrock/config/tagx.xml
-      - ${HOME:?set HOME}/git/openbedrock/docker/log4perl.conf:/usr/lib/bedrock/config/log4perl.conf
-      - ${HOME:?set HOME}/git/openbedrock/docker/pod_paths.xml:/usr/lib/bedrock/config/pod_paths.xml
-      - ${HOME:?set HOME}/git/openbedrock/docker/markdown_paths.xml:/usr/lib/bedrock/config/markdown_paths.xml
-      - ${HOME:?set HOME}/www:/var/www
-      - ${HOME:?set HOME}/git:/git
-volumes:
-  my-db:
+      - ${PWD}/httpd.conf:/etc/httpd/conf/httpd.conf
+      - ${HOME:?set HOME}/scratch:/tmp/scratch
 ```
 
 ## Create an Upload Bucket
+
+> The test bucket will automatically be created for you if it does not
+> exist if you set the `create_bucket` variable in the
+> `/etc/workflow/config.d/upload.cfg` file to a true value.
 
 ```
 aws s3 \
@@ -183,7 +264,9 @@ Unpack the tarball and configure the software with optional arguments.
 | | default: `/var/www` |
 | `--with-redis-server` | name of the Redis server default: `localhost` |
 | `--with-redis-port` | port for the Redis server default: `6379` |
- 
+| `--enable-apache-log-console` | output Apache log files to console |
+| `--with-apache-loglevel`  | configure Apache's `LogLevel` directive |
+
 ```
 $ tar xfvz perl-upload-cgi-1.0.0.tar.gz
 $ cd perl-upload-cgi
@@ -280,16 +363,24 @@ sudo systemctl start inotify
 | Reload (SIGHUP) | `systemctl reload inotify` |
 | Daemon reload  (required when configuration changes) | `systemctl daemon-reload` |
 
-If you don't have `systemd` available you can launch the script
+If you don't have `systemd` available or you are running inside a
+Docker container, you can launch the script
 manually.
 
 ```
-sudo /usr/local/bin/inotify.pl --config=/etc/workflow/config.d/upload.cfg
+sudo /usr/local/bin/inotify.pl \
+   --config=/etc/workflow/config.d/upload.cfg
+ps -ef | grep inotify
 ```
+
+The process will log to two files. During the initialization phase a
+log file is written to `/var/log/perl-upload-cgi.log`. Shortly after
+launching, logs are written to `/var/www/log/perl-upload-cgi.log`.
 
 # Redis
 
-Starting Redis...
+If you are not running the `docker-compose` configuration but want to
+run Redis in a local Docker container you can start Redis as shown below.
 
 ```
 docker run -d \
@@ -300,7 +391,7 @@ docker run -d \
 
 To connect from the other Docker containers:
 
-On host system:
+On host system (assuming you have `jq` installed):
 
 ```
 redis_ip=$(docker inspect $(docker ps -a | grep redis | awk '{print $1}') | \

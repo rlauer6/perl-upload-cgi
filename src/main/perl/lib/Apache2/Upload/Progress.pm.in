@@ -1935,7 +1935,7 @@ In reviewing prior art and researching C<mod_perl>
 handlers, I uncovered L<Apache::UploadMeter> which contained a lot of
 similar concepts (C<mod_perl> based, ability to serve an upload form,
 highly configurable...). Much of the custom Apache directive code has
-been guided by the L<Apache::UPlaodMeter> implementation.>
+been guided by the L<Apache::UploadMeter> implementation.>
 
 =head2 Differences Between C<Apache::UploadMeter> and C<Apache::Upload::Progress>
 
@@ -1945,14 +1945,15 @@ been guided by the L<Apache::UPlaodMeter> implementation.>
 
 The upload status in C<Apache::UploadMeter> is implemented using
 L<File::Cache>, implying it can only be used on a single Apache
-server. C<Apache::Upload::Progress> allows you specify your own cache
-handler (the default implementation uses Redis). See L</CREATING YOUR OWN CACHING MECHANISM>.
+server. C<Apache::Upload::Progress> allows you to specify your own
+cache handler (the default implementation uses Redis). See L</CREATING
+YOUR OWN CACHING MECHANISM>.
 
 =item * Form Handling
 
 Upload forms for C<Apache::Upload::Progress> are based on a
-configurable template using processed using
-L<Template::Toolkit>.. C<Apache::UploadMeter> serves up a hard coded
+configurable template processed using
+L<Template::Toolkit>. C<Apache::UploadMeter> serves up a hard coded
 form which only handles a single file upload (the expectation is for
 you to modify that code for your needs). It appears one could include
 multiple forms on the page but that looks to be a bit messy.
@@ -2056,8 +2057,8 @@ implementation
 A configuration file in JSON format is read once by the class when
 your Apache server is started. The file name is configured in the
 C<E<lt>UploadProgressE<gt>> directive. Set the path for where that
-file can be found usig C<CONFIG_PATH> environment variable. You should
-set that in your Apache configuration as shown below.
+file can be found using the C<CONFIG_PATH> environment variable. You
+should set that in your Apache configuration as shown below.
 
  PerlSetEnv CONFIG_PATH /var/www/config
 
@@ -2079,76 +2080,79 @@ Any I<false> boolean value in the configuration file can be represented as:
  no
  off
  false
-  {
-      "allow_edit" : "yes",
-      "log4perl" : {
-          "config" : [
-              "log4perl.rootLogger = DEBUG, File",
-              "log4perl.appender.File = Log::Log4perl::Appender::File",
-              "log4perl.appender.File.filename = /var/www/log/apache2_upload_progress.log",
-              "log4perl.appender.File.mode = append",
-              "log4perl.appender.File.layout = PatternLayout",
-              "log4perl.appender.File.layout.ConversionPattern=[%d] (%r/%R) %M:%L - %m%n"
-          ],
-          "level" : "debug"
-      },
-      "upload" : {
-          "path" : "/var/www/spool",
-          "max_file_size" : "1G",
-          "temp_dir" : "/tmp",
-          "timeout" : 60,
-          "fix_filename": "yes",
-          "metadata" : "yes",
-          "store_method" : "rename"
-      },
-      "redis" : {
-          "server" : "redis",
-          "port" : "6379",
-          "timeout" : 60
-      },
-      "template" : {
-          "jquery" : {
-              "javascript" : {
-                  "src" : "https://code.jquery.com/jquery-3.6.3.min.js",
-                  "integrity" : "sha256-pvPw+upLPUjgMXY0G+8O0xUf+/Im1MZjXxxgOcBQBXU=",
-                  "crossorigin" : "anonymous"
-              }
-          },
-          "bootstrap" : {
-              "stylesheet" : "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css",
-              "javascript" : {
-                  "src" : "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"
-              }
-          },
-          "upload": {
-              "form" : "upload-form.tt",
-              "javascript" : {
-                  "src" : "/javascript/upload.js"
-              },
-              "url" : "/upload",
-              "form_field" : "filename",
-              "max_files" : 15
-          },
-          "config": {
-              "form" : "config-form.tt",
-              "javascript": {
-                  "src" : "/javascript/config.js"
-              },
-              "css": {
-                "src" : "/css/config.css"
-              },
-              "url" : "/upload/config"
-          },
-          "include_path" : "/var/www/include",
-          "absolute" : 1,
-          "interpolate" : 1
-      },
-      "session" : {
-          "cookie_name" : "session",
-          "timeout" : 15,
-          "no_cookie_error" : 0
-      }
-  }
+
+B<Sample configuration:>
+
+ {
+     "allow_edit" : "yes",
+     "log4perl" : {
+         "config" : [
+             "log4perl.rootLogger = DEBUG, File",
+             "log4perl.appender.File = Log::Log4perl::Appender::File",
+             "log4perl.appender.File.filename = /var/www/log/apache2_upload_progress.log",
+             "log4perl.appender.File.mode = append",
+             "log4perl.appender.File.layout = PatternLayout",
+             "log4perl.appender.File.layout.ConversionPattern=[%d] (%r/%R) %M:%L - %m%n"
+         ],
+         "level" : "debug"
+     },
+     "upload" : {
+         "path" : "/var/www/spool",
+         "max_file_size" : "1G",
+         "temp_dir" : "/tmp",
+         "timeout" : 60,
+         "fix_filename": "yes",
+         "metadata" : "yes",
+         "store_method" : "rename"
+     },
+     "redis" : {
+         "server" : "redis",
+         "port" : "6379",
+         "timeout" : 60
+     },
+     "template" : {
+         "jquery" : {
+             "javascript" : {
+                 "src" : "https://code.jquery.com/jquery-3.6.3.min.js",
+                 "integrity" : "sha256-pvPw+upLPUjgMXY0G+8O0xUf+/Im1MZjXxxgOcBQBXU=",
+                 "crossorigin" : "anonymous"
+             }
+         },
+         "bootstrap" : {
+             "stylesheet" : "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css",
+             "javascript" : {
+                 "src" : "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"
+             }
+         },
+         "upload": {
+             "form" : "upload-form.tt",
+             "javascript" : {
+                 "src" : "/javascript/upload.js"
+             },
+             "url" : "/upload",
+             "form_field" : "filename",
+             "max_files" : 15
+         },
+         "config": {
+             "form" : "config-form.tt",
+             "javascript": {
+                 "src" : "/javascript/config.js"
+             },
+             "css": {
+               "src" : "/css/config.css"
+             },
+             "url" : "/upload/config"
+         },
+         "include_path" : "/var/www/include",
+         "absolute" : 1,
+         "interpolate" : 1
+     },
+     "session" : {
+         "cookie_name" : "session",
+         "timeout" : 15,
+         "no_cookie_error" : 0
+     }
+ }
 
 =item log4perl
 
@@ -2191,16 +2195,20 @@ less than the value of C<APREQ2_ReadLimit>. You can set that value in
 your Apache configuration if you want to allow uploads greater than
 the defaul value of 64MB.
 
-section. Files uploaded will, by default be upload first to a temp
+Files uploaded will, by default be upload first to a temp
 directory and then moved (linked) to the path you specified. If you
-prefer that the file be copied, add a C<copy> variable this section
+prefer that the file be copied, add a C<copy> variable to this section
 set to any non-zero value.
+
+Example:
+
+ copy = yes
 
 default: 64MB
 
 =item metadata
 
-Boolean value that determines whetner a metadata file will be created
+Boolean value that determines whether a metadata file will be created
 in the upload directory for each file. The metadata file will have the
 same name as the file that was uploaed with an extension of C<.json>.
 
@@ -2222,7 +2230,7 @@ default: false
 =item redis
 
 I<The reference example utilizes a Redis server to implement caching of
-the upload status.>
+the upload status, therefore the sample configuration includes a C<redis> section.>
 
 Configure the Redis server in this section. The C<timeout> value is
 the amount of time that cache entries should be allowed to exist. Once
@@ -2242,28 +2250,33 @@ uploading data to it.
 The C<upload_form> endpoint can be used to deliver a web form for
 uploading files. The project contains a sample form based on Bootstrap
 that is rendered using C<Template::Toolkit>. You can configure your
-own form here. C<include_path> is the path where you template will be
-found. The C<upload> section will be sent to
+own form here. C<include_path> is the path where your templates will be
+found. The entire configuration is sent to
 C<Template::Toolkit::process()>.  You can put anything you'd like in
-this section based on your template's needs.
+the C<upload? section based on your template's needs.
 
 =item session
 
 The C<session> section is used to specify the cookie name that
 contains your session id. The API endpoints look for the cookie you
-specify here in order to uniquely identify the session and ultimately
-the user performing the upload.
+specify here in order to uniquely identify the session and in most
+cases where a session cookie is used, the user performing the upload.
 
-The C<timeout> value here is only used when deliverying the form to
-create a cookie and only sends a cookie if one is not available. The
-C<upload_form> endpoint is designed to deliver an HTML snippet that
-might be used inside a larger application. If a cookie is not found it
-likely means your user's cookie has expired and you might prefer that
-the endpoint return an error code. You can set the value of
-C<no_cookie_error> to a non-zero value (e.g. 401) to have the endpoint
-return an HTTP status other than 200 rather than generating a cookie.
+The C<timeout> value here is used to create the cookie and is only
+used when delivering the form if a cookie is not available (and you
+have not set the C<no_cookie_error> value). The C<upload_form>
+endpoint is designed to deliver an HTML snippet that might be used
+inside a larger application. If a cookie is not found it likely means
+your user's cookie has expired, hence by default a cookie will be
+fabricated and sent to the web client. In your own applications you
+probably do not want this module to create a cookie for you. In that
+case can set the value of C<no_cookie_error> to a non-zero value
+(e.g. 401) to have the endpoint return an HTTP status other than 200
+rather than generating a cookie. If you subclass
+C<Apache2::Upload::Progress> you can override the default cookie
+creation method to provide your own session cookie.
 
-L</upload_form> for more details about how you can deliver your own
+See L</upload_form> for more details about how you can deliver your own
 forms using the C<upload_form> endpoint.
 
 =over 10
@@ -2275,18 +2288,19 @@ forms using the C<upload_form> endpoint.
 Presumably you are using this uploader as part of an application that
 may support multiple users. In order to identify uploads for
 individual clients the process looks for a cookie to use as a session
-identifier. The cookie is used as key when storing status information
+identifier. The cookie is used as a key when storing status information
 related to that session's file uploads. The name of the cookie is
 configurable.
 
-If a session cookie does not exist, API calls will return a 401 status.
+If a session cookie does not exist, API calls (other than
+C</upload/form> discussed above) will return a 401 status.
 
-API endpoints will first look for a session cookie and if does not
+API endpoints will first look for a session cookie and if it does not
 exist, will return a 401. Next, the method that implements the API
 endpoint wil call the C<validate_session()> method. You should
-subclass C<Apache2::Upload::Progress> and override this method to provide
-your own session validation routine.  The method should return a hash
-reference that contains at least two members:
+subclass C<Apache2::Upload::Progress> and override this method to
+provide your own session validation routine.  The method should return
+a hash reference that contains at least two members:
 
  session_id
  prefix
@@ -2296,6 +2310,10 @@ dash ('-') to the front of the filename. Typically your C<prefix>
 value should be a string or number that identifies the user or
 account that has uploaded the file. The identifier should only contain
 alphanumeric values.
+
+The daemon that is provided with this project will use the prefix part
+of the filename as part of the object key, thereby partitioning the S3
+bucket.
 
 =back
 
@@ -2353,7 +2371,8 @@ value is currently not used.
 This API call will store the file list in a cache with a configurable
 expire time (if your caching implements expirations). If the web
 client does not upload the files before the expire time the cache will
-be emptied.
+be emptied. Expiraration of cached elements is not done for you - your
+cache implementation must provide this capability.
 
 After calling the endpoint you can immediately call the status
 endpoint although the file upload process will not begin until your
@@ -2362,8 +2381,9 @@ web client begins sending the files.
 =item 2. Initiate the upload for each file.
 
 You should upload each file separately using the C<upload> endpoint,
-sending the file id returned in step 1. You can sent the id in a
-custom header (X-Upload-Id) or as a query string parameter.
+sending the file id returned in step 1. You can send the id in a
+custom header (X-Upload-Id) or as a query string parameter (but not as
+POST parameter).
 
 For example...
 
@@ -2436,8 +2456,9 @@ start of the upload.
 
 Once all files have been uploaded successfully, call the
 C<upload_reset> endpoint in order to clear the cache. If you do not
-clear the cache it will automatically be cleared when the configured
-timeout period has elapsed.
+clear the cache it will automatically (in the reference
+implementation) be cleared when the configured timeout period has
+elapsed.
 
 You may want to clear the cache immediately after successful
 uploads. If the user is fast enough and initiates another upload
@@ -2448,8 +2469,8 @@ with new cached data.
 
 =head1 METHODS AND SUBROUTINES
 
-None of these methods should be called directly. They should be exposed
-as URL endpoints in your Apache configuration.
+None of these methods should be called directly. They will be exposed
+as URL endpoints when Apache is restarted.
 
 =head2 upload
 
@@ -2602,7 +2623,17 @@ See also L</Sessions>.
 
 =head2 get_session_id
 
+This method should return a unique id for a user's session. Typically
+this might come from a cookie. The default implementation will return
+the cookie value of the cookie that is specified in the C<session>
+section of the configuration.
+
 =head2 get_upload_id
+
+This method should return the unique identifier assigned to one of the
+files being uploaded. The default implementation will look in the
+query string for the C<upload_id> variable and look for a custom
+header (C<X-Upload-Id>).
 
 =head2 bake_cookie
 
@@ -2627,15 +2658,16 @@ implementation.
 
 =head1 CREATING YOUR OWN CACHING MECHANISM
 
-The reference implmentation for the upload progress meter uses a L<https://redis.io|Redis>
-cache so that in a multi-server web application, requests for upload
-status are served from a central cache. You can create your own
-caching mechanism for a single server environment or use some other cache
-repository like DynamoDB. The class you specify in the Apache
-configuration in the C<E<lt>UploadProgressE<gt>> block need only
-implement a few methods described below.
+The reference implmentation for the upload progress meter uses a
+L<https://redis.io|Redis> cache so that in a multi-server web
+application, requests for upload status are served from a central
+cache. You can create your own caching mechanism for a single server
+environment or use some other cache repository like DynamoDB. The
+class you specify in the Apache configuration in the
+C<E<lt>UploadProgressE<gt>> block need only implement a few methods
+described below.
 
-Method will be passed one or all these values.
+Methods will be passed one or all these values.
 
 =over 5
 
@@ -2704,15 +2736,21 @@ specified session.
 
  get_upload_status(r, id)
 
-Returns the object that was stored when the C<set_session_key()> method was called.
+Returns the object that was stored when the C<set_session_key()>
+method was called. This method is called when the web client access
+the C</upload/status> endpoint.
 
 =head2 flush_session_cache
 
  flush_session_cache(r, session-id)
 
-Perform whatever actions necessary to remove the session from the cache.
+Perform whatever actions necessary to remove the session from the
+cache. This is called when the web client access the C</upload/reset>
+endpoint.
 
 =head1 APACHE CONFIGURATION
+
+This is the basic configuration required to enable the progress meter.
 
  APREQ2_ReadLimit 2147483648
  
@@ -2723,19 +2761,21 @@ Perform whatever actions necessary to remove the session from the cache.
  PerlPostConfigHandler Apache2::Upload::Progress::post_config
  
  <UploadProgress>
-   UploadProgressHandler Apach2::Upload::Progress:Redis>
+   UploadProgressHandler Apache2::Upload::Progress:Redis>
    UploadProgressConfig apache2-upload-progress.json>
  </UploadProgress>
 
 Configuring Apache requires that you add the configuration directives
 above. By default the maximum upload size is 64MB. Set
-<APREQ2_ReadLimit> to a higher value if you want to allow larger file uploads.
+C<APREQ2_ReadLimit> to a higher value if you want to allow larger file
+uploads.
 
 =over 5
 
 =item C<PerlLoadModule>, C<PerlPostReadRequestHandler>, C<PerlPostConfigHandler>
 
-These are required to enable the upload and progress monitoring. Just add them.
+These are required to enable the upload and progress monitoring. Just
+add them.
 
 =item C<UploadProgress>
 

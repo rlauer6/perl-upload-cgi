@@ -1,0 +1,14 @@
+<div class="row mb-3">
+  <div class="col-2">
+    <label for="server" data-bs-toggle="tooltip" data-bs-title="Redis server name" >Redis Server</label>
+    <input type="text" class="form-control" id="server">
+  </div>
+  <div class="col-2">
+    <label for="port">Port</label>
+    <input type="text" class="form-control" id="port">
+  </div>
+  <div class="col-2">
+    <label for="redis-timeout">Port</label>
+    <input type="text" class="form-control" id="redis_timeout">
+  </div>
+</div>

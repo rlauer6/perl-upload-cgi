@@ -15,10 +15,16 @@ Readonly our $TRUE  => 1;
 Readonly our $FALSE => 0;
 
 # chars
-Readonly our $EMPTY       => q{};
-Readonly our $SLASH       => q{/};
-Readonly our $EQUALS_SIGN => q{=};
-Readonly our $DASH        => q{-};
+Readonly our $EMPTY        => q{};
+Readonly our $SLASH        => q{/};
+Readonly our $EQUALS_SIGN  => q{=};
+Readonly our $DASH         => q{-};
+Readonly our $COMMA        => q{,};
+Readonly our $SEMICOLON    => q{;};
+Readonly our $COLON        => q{:};
+Readonly our $DOUBLE_COLON => q{::};
+Readonly our $DOT          => q{.};
+Readonly our $PERIOD       => q{.};
 
 # values
 Readonly::Hash our %LOG4PERL_LEVELS => (
@@ -74,6 +80,12 @@ our %EXPORT_TAGS = (
       $SLASH
       $EQUALS_SIGN
       $DASH
+      $COMMA
+      $SEMICOLON
+      $COLON
+      $DOUBLE_COLON
+      $DOT
+      $PERIOD
     )
 
   ],

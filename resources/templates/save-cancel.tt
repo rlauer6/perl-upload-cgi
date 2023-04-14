@@ -1,0 +1,6 @@
+<div class="row mt-3">
+  <div class="col-3">
+    <button class="btn btn-primary btn-sm" id="save-btn">Save</button>
+    <button class="btn btn-secondary btn-sm" id="cancel-btn">Cancel</button>
+  </div>
+</div>

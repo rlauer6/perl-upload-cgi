@@ -26,7 +26,7 @@ use Apache2::Connection;
 use Apache2::Upload;
 use Apache2::ServerRec;
 use Apache2::ServerUtil qw(get_handlers);
-use Apache2::Module     qw(add);
+use Apache2::Module     ();
 
 use APR::Const -compile => qw( SUCCESS );
 use APR::Brigade qw();
@@ -49,7 +49,7 @@ use List::Util qw(max min any pairs none uniq);
 use Log::Log4perl::Level;
 use Log::Log4perl;
 use Number::Bytes::Human qw(format_bytes parse_bytes);
-use Scalar::Util         qw(reftype blessed);
+use Scalar::Util         qw(reftype blessed looks_like_number);
 use Template;
 use Time::HiRes qw(sleep gettimeofday);
 
@@ -58,6 +58,30 @@ use Apache2::Upload::Progress::Constants qw(:all);
 use parent qw(Exporter);
 
 our @EXPORT = qw(get_config dumper);
+
+our @EXPORT_OK = qw(
+  boolean
+  v_is_boolean
+  v_is_byte_str
+  v_is_dir
+  v_is_num
+  v_is_one_of
+  v_is_valid_str
+);
+
+our %EXPORT_TAGS = (
+  validators => [
+    qw(
+      v_is_boolean
+      v_is_byte_str
+      v_is_dir
+      v_is_num
+      v_is_one_of
+      v_is_valid_str
+
+    )
+  ]
+);
 
 ########################################################################
 
@@ -166,7 +190,7 @@ sub upload_config {
 
     dumper( accept => $accept );
 
-    if ( $accept->{'application/json'} ) {
+    if ( !$accept->{'text/html'} && $accept->{'application/json'} ) {
       my %config = %{ get_config($r) };
 
       return output_json( $r, content => \%config );
@@ -184,9 +208,21 @@ sub upload_config {
 
   my $config = get_json_payload($r);
 
-  save_config( $r, $config );
+  $r->log->debug('Saving config....');
 
-  return Apache2::Const::OK;
+  my $new_config = eval { save_config( $r, $config ); };
+
+  my $status = Apache2::Const::OK;
+
+  if ( !$new_config || $EVAL_ERROR ) {
+    $new_config = { error => $EVAL_ERROR };
+
+    $status = Apache2::Const::HTTP_BAD_REQUEST;
+  }
+
+  output_json( $r, content => $new_config, status => $status );
+
+  return $status;
 }
 
 ########################################################################
@@ -836,8 +872,9 @@ sub post_config {
   $PROGRESS_CLASS  //= $EMPTY;
   $PROGRESS_CONFIG //= $EMPTY;
 
-  $s->log->info( sprintf 'progress_class...[%s]', $PROGRESS_CLASS );
-  $s->log->info( sprintf 'progress_config..[%s]', $PROGRESS_CONFIG );
+  $s->log->info( sprintf 'post_config: loglevel: %s', $s->loglevel );
+  $s->log->info( sprintf 'progress_class...[%s]',     $PROGRESS_CLASS );
+  $s->log->info( sprintf 'progress_config..[%s]',     $PROGRESS_CONFIG );
 
   if ( !$PROGRESS_CLASS ) {
     $s->log->error( 'No progress handler defined for ' . __PACKAGE__ );
@@ -964,7 +1001,8 @@ sub init_config {
   }
 
   if ( $r && $r->can('loglevel') ) {
-    $self->{apache_loglevel} = $r->loglevel();
+    $self->{apache_loglevel}
+      = max( Apache2::Const::LOG_DEBUG, $r->loglevel() );
   }
   else {
     $self->{apache_loglevel} = Apache2::Const::LOG_INFO;
@@ -984,27 +1022,257 @@ sub init_config {
 }
 
 ########################################################################
+sub v_is_one_of {
+########################################################################
+  my ( $field, $value, @valid_choices ) = @_;
+
+  $value //= $EMPTY;
+
+  eval {
+    die sprintf "%s is not one of %s\n", $field, join $COMMA, @valid_choices
+      if none { $value eq $_ } @valid_choices;
+  };
+
+  return $EVAL_ERROR ? $FALSE : $TRUE;
+}
+
+########################################################################
+sub v_is_dir {
+########################################################################
+  my ( $field, $path ) = @_;
+
+  eval {
+    die sprintf "%s is not a valid path\n", $field
+      if !-d $path;
+
+    die sprintf '%s is not writable', $field
+      if !-w $path;
+  };
+
+  return $EVAL_ERROR ? $FALSE : $TRUE;
+}
+
+########################################################################
+sub v_is_valid_str {
+########################################################################
+  my ( $field, $value, %options ) = @_;
+
+  my ( @allowed, @forbidden );
+
+  if ( defined $options{allowed} ) {
+    @allowed = map { sprintf '"%s"', $_ } split //xsm, $options{allowed};
+  }
+
+  if ( defined $options{forbidden} ) {
+    @forbidden = map { sprintf '"%s"', $_ } split //xsm, $options{forbidden};
+  }
+
+  eval {
+    die $field . " cannot be empty\n"
+      if !$options{empty} && ( !defined $value || $value eq $EMPTY );
+
+    if (@allowed) {
+      die sprintf "%s has invalid characters, must be one of %s\n", $field,
+        join $COMMA, @allowed
+        if any { $options{allowed} !~ /$_/xsm } split //xsm, $value;
+    }
+
+    if (@forbidden) {
+      die sprintf "%s has invalid characters, cannot include %s\n", $field,
+        join $COMMA, @forbidden
+        if any { $options{forbidden} =~ /$_/xsm } split //xsm, $value;
+    }
+  };
+
+  return $EVAL_ERROR ? $FALSE : $TRUE;
+}
+
+########################################################################
+sub v_is_boolean {
+########################################################################
+  my ( $field, $value ) = @_;
+
+  my $bool = eval { return boolean($value) };
+
+  return $EVAL_ERROR ? $FALSE : $TRUE;
+}
+
+########################################################################
+sub v_is_num {
+########################################################################
+  my ( $field, $value, @range ) = @_;
+
+  eval {
+    die sprintf "%s is not a number [%s]\n", $field, $value
+      if !looks_like_number($value);
+
+    die sprintf ' %s out of range (< %s), ', $field, $range[0]
+      if @range && $value < $range[0];
+
+    die sprintf ' %s out of range (> %s)', $field, $range[1]
+      if defined $range[1] && $value > $range[1];
+  };
+
+  return $EVAL_ERROR ? $FALSE : $TRUE;
+}
+
+########################################################################
+sub v_is_byte_str {
+########################################################################
+  my ( $field, $value, @range ) = @_;
+
+  @range = map { parse_bytes($_) } @range;
+
+  no Carp::Always;
+
+  my $amount = eval { parse_bytes($value); };
+
+  eval {
+    die sprintf "%s  is not a byte count\n", $field
+      if !defined $amount || $EVAL_ERROR;
+
+    die sprintf ' %s out of range (< %s), ', $field, $range[0]
+      if @range && $amount < $range[0];
+
+    die sprintf ' %s out of range (> %s)', $field, $range[1]
+      if defined $range[1] && $amount > $range[1];
+  };
+
+  return $EVAL_ERROR ? $FALSE : $TRUE;
+}
+
+########################################################################
+sub validate_config {
+########################################################################
+  my ( $r, $config ) = @_;
+
+  my %redis = (
+    server => sub {
+      my ( $f, $v ) = @_;
+      return v_is_valid_str(
+        $f, $v,
+        allowed => join $EMPTY,
+        q{A} .. q{Z}, q{a} .. q{z}, q{-.}
+      );
+    },
+    port => sub {
+      my ( $f, $v ) = @_;
+      return v_is_num( $f, $v, 1024, 65_535 );
+    },
+    timeout => sub {
+      my ( $f, $v ) = @_;
+      $v //= 0;
+      return v_is_num( $f, $v, 10, 60 * 5 );
+    },
+  );
+
+  my %upload = (
+    path => sub {
+      my ( $f, $v ) = @_;
+      return v_is_dir( $f, $v );
+    },
+    max_file_size => sub {
+      my ( $f, $v ) = @_;
+
+      return 0
+        if !defined $v;
+
+      my @range = map { parse_bytes($_) } qw(64MB 2GB);
+
+      print {*STDERR} Dumper( [ range => \@range ] );
+
+      return v_is_byte_str( $f, $v, @range );
+    },
+    temp_dir => sub {
+      my ( $f, $v ) = @_;
+      return v_is_dir( $f, $v );
+    },
+    timeout => sub {
+      my ( $f, $v ) = @_;
+
+      return v_is_num( $f, $v, 10, 60 * 5 );
+    },
+    fix_filename => sub {
+      my ( $f, $v ) = @_;
+      return v_is_boolean( $f, $v );
+    },
+    metadata => sub {
+      my ( $f, $v ) = @_;
+      return v_is_boolean( $f, $v );
+    },
+    store_method => sub {
+      my ( $f, $v ) = @_;
+      return v_is_one_of( $f, $v, qw(rename link symlink copy) );
+    },
+  );
+
+  my %session = (
+    cookie_name => sub {
+      my ( $f, $v ) = @_;
+      # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie
+      return v_is_valid_str(
+        $f, $v,
+        empty     => $TRUE,
+        forbidden => "\t" . ' ()<>\@,;:\"/\[\]\?=\{\}'
+      ); ## no critic RequireInter
+    },
+    timeout => sub {
+      my ( $f, $v ) = @_;
+      return v_is_num( $f, $v, 1 );
+    },
+    no_cookie_error => sub {
+      my ( $f, $v ) = @_;
+      $v ||= 0;
+      return v_is_num( $f, $v, 0, 999 );
+    },
+  );
+
+  my %sections = (
+    redis   => \%redis,
+    session => \%session,
+    upload  => \%upload,
+  );
+
+  foreach my $s ( keys %sections ) {
+    $r->log->info( 'validating section ' . $s );
+
+    foreach my $f ( keys %{ $sections{$s} } ) {
+      $r->log->info( 'validating ' . $f . ' value ' . $config->{$s}->{$f}
+          // $EMPTY );
+
+      die $EVAL_ERROR
+        if !$sections{$s}->{$f}->( $f, $config->{$s}->{$f} );
+    }
+  }
+
+  return $TRUE;
+}
+
+########################################################################
 sub save_config {
 ########################################################################
-  my ($config) = @_;
+  my ( $r, $config ) = @_;
 
   my $config_file = get_config_filename();
 
-  if ( ref $config ) {
+  my %new_config = %{$UPLOAD_CONFIG};
 
-    if ( blessed $config) {
-      $config = \%{$config};
-    }
+  $r->log->info('validating configuration...');
 
-    $config = JSON->new->pretty->encode($config);
+  validate_config( $r, $config );
+
+  foreach ( keys %{$config} ) {
+    $new_config{$_} = $config->{$_};
   }
 
   open my $fh, '>', $config_file
     or die "could not open $config_file for writing\n";
 
-  print {$fh} $config;
+  print {$fh} JSON->new->pretty->encode( \%new_config );
 
-  return close $fh;
+  close $fh;
+
+  return \%new_config;
 }
 
 ########################################################################
@@ -1141,7 +1409,7 @@ sub output_json {
 
   my ( $content, $status, $cookie ) = @args{qw(content status cookie)};
 
-  $status //= Apache2::Const::HTTP_OK;
+  $status ||= Apache2::Const::OK;
 
   if ( ref $content ) {
     $content = JSON->new->pretty->encode($content);
@@ -1153,11 +1421,15 @@ sub output_json {
 
   $r->content_type('application/json');
 
-  $r->status($status);
+  if ( $status != Apache2::Const::OK ) {
+    $r->status($status);
+    $r->custom_response( $status, $content );
+  }
+  else {
+    $r->print($content);
+  }
 
-  $r->print($content);
-
-  return Apache2::Const::OK; # we always want to return OK
+  return $status;
 }
 
 ########################################################################
@@ -1295,7 +1567,9 @@ sub store_progress {
 ########################################################################
 sub process_template {
 ########################################################################
-  my ( $template, $name ) = @_;
+  my ( $config, $name ) = @_;
+
+  my $template = $config->get_template;
 
   my $tt = Template->new(
     { INCLUDE_PATH => $template->{include_path},
@@ -1309,7 +1583,7 @@ sub process_template {
 
   $content = eval {
 
-    my $parameters = $template;
+    my $parameters = { config => $config };
 
     if ( !$tt->process( $template_name, $parameters, \$content ) ) {
       die $tt->error();
@@ -1341,7 +1615,7 @@ sub get_upload_form {
   my $content;
 
   if ( $template && $template->{upload} ) {
-    $content = process_template( $template, 'upload' );
+    $content = process_template( $config, 'upload' );
   }
   else {
     $content = create_default_upload_form($r);
@@ -1382,7 +1656,7 @@ sub get_config_form {
 
   my $content;
 
-  return process_template( $template, 'config' )
+  return process_template( $config, 'config' )
     if $template && $template->{config};
 
   return;
@@ -1504,7 +1778,7 @@ my @directives = (
 );
 
 # this method is not defined at compile time...
-if ( !$COMPILING ) {
+if ( !$COMPILING && $ENV{MOD_PERL} ) {
   Apache2::Module::add( __PACKAGE__, \@directives );
 }
 
@@ -1519,11 +1793,11 @@ sub boolean {
     $default_value = $default[0];
   }
 
-  $value =~ s/\s*([^ ]+)\s*/$1/xsm;
-
   return $default_value
     if !defined $value
     && defined $default_value;
+
+  defined $value && $value =~ s/\s*([^ ]+)\s*/$1/xsm;
 
   return $FALSE
     if !defined $value || any { $value eq $_ } qw( 0 false off no );
@@ -1654,10 +1928,13 @@ configured by the handler.
 =head1 HISTORY
 
 I<Originally written as a CGI, I decided to convert this module into a
-C<mod_perl> handler. In reviewing prior art and researching C<mod_perl>
+C<mod_perl> handler and provide a fully functional reference
+implmentation you can run in a Docker container.
+
+In reviewing prior art and researching C<mod_perl>
 handlers, I uncovered L<Apache::UploadMeter> which contained a lot of
 similar concepts (C<mod_perl> based, ability to serve an upload form,
-highly configurable...). Much of the Apache configuration code has
+highly configurable...). Much of the custom Apache directive code has
 been guided by the L<Apache::UPlaodMeter> implementation.>
 
 =head2 Differences Between C<Apache::UploadMeter> and C<Apache::Upload::Progress>
@@ -1770,6 +2047,8 @@ Version 2.17
 =item * C<docker>, C<docker-compose> if you want to run the reference
 implementation
 
+=item C<autoconf>, C<automake> for hacking on the project
+
 =back
 
 =item Configuration
@@ -1800,48 +2079,76 @@ Any I<false> boolean value in the configuration file can be represented as:
  no
  off
  false
-
   {
-   "log4perl" : {
-     "config" : [
-       "log4perl.rootLogger = DEBUG, File",
-       "log4perl.appender.File = Log::Log4perl::Appender::File",
-       "log4perl.appender.File.filename = @apache_site_logdir@/apache2_upload_progress.log",
-       "log4perl.appender.File.mode = append",
-       "log4perl.appender.File.layout = PatternLayout",
-       "log4perl.appender.File.layout.ConversionPattern=[%d] (%r/%R) %M:%L - %m%n"
-     ],
-     "level" : "debug",
-   },
-   "upload" : {
-     "path" : "/var/www/spool",
-     "max_file_size" : "2G",
-     "temp_dir" : "/tmp",
-     "fix_filename" : "yes",
-     "metadata" : "yes"
-   },
-   "redis" : {
-     "server" : "redis",
-     "port" : "6379",
-     "timeout" : 90
-   },
-   "template" : {
-     "upload": {
-       "form" : "upload-form.tt",
-       "javascript" : "/javascript/upload.js",
-       "url" : "/upload",
-       "form_field" : "filename",
-       "max_files" : 15
-     },
-     "include_path" : "/var/www/include",
-     "absolute" : 1,
-     "interpolate" : 0
-   },
-   "session" : {
-     "cookie_name" : "session",
-     "timeout" : 15
-   }
- }
+      "allow_edit" : "yes",
+      "log4perl" : {
+          "config" : [
+              "log4perl.rootLogger = DEBUG, File",
+              "log4perl.appender.File = Log::Log4perl::Appender::File",
+              "log4perl.appender.File.filename = /var/www/log/apache2_upload_progress.log",
+              "log4perl.appender.File.mode = append",
+              "log4perl.appender.File.layout = PatternLayout",
+              "log4perl.appender.File.layout.ConversionPattern=[%d] (%r/%R) %M:%L - %m%n"
+          ],
+          "level" : "debug"
+      },
+      "upload" : {
+          "path" : "/var/www/spool",
+          "max_file_size" : "1G",
+          "temp_dir" : "/tmp",
+          "timeout" : 60,
+          "fix_filename": "yes",
+          "metadata" : "yes",
+          "store_method" : "rename"
+      },
+      "redis" : {
+          "server" : "redis",
+          "port" : "6379",
+          "timeout" : 60
+      },
+      "template" : {
+          "jquery" : {
+              "javascript" : {
+                  "src" : "https://code.jquery.com/jquery-3.6.3.min.js",
+                  "integrity" : "sha256-pvPw+upLPUjgMXY0G+8O0xUf+/Im1MZjXxxgOcBQBXU=",
+                  "crossorigin" : "anonymous"
+              }
+          },
+          "bootstrap" : {
+              "stylesheet" : "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css",
+              "javascript" : {
+                  "src" : "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"
+              }
+          },
+          "upload": {
+              "form" : "upload-form.tt",
+              "javascript" : {
+                  "src" : "/javascript/upload.js"
+              },
+              "url" : "/upload",
+              "form_field" : "filename",
+              "max_files" : 15
+          },
+          "config": {
+              "form" : "config-form.tt",
+              "javascript": {
+                  "src" : "/javascript/config.js"
+              },
+              "css": {
+                "src" : "/css/config.css"
+              },
+              "url" : "/upload/config"
+          },
+          "include_path" : "/var/www/include",
+          "absolute" : 1,
+          "interpolate" : 1
+      },
+      "session" : {
+          "cookie_name" : "session",
+          "timeout" : 15,
+          "no_cookie_error" : 0
+      }
+  }
 
 =item log4perl
 

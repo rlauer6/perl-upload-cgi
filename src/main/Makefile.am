@@ -1,1 +1,2 @@
-SUBDIRS = . bash perl javascript images
+SUBDIRS = . javascript css images bash perl
+

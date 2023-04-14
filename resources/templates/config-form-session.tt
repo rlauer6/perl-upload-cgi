@@ -1,0 +1,17 @@
+<div class="row mb-3">
+  <div class="col-2">
+    <label for="cookie_name" data-bs-toggle="tooltip" data-bs-title="Name of the cookie" >Cookie Name</label>
+    <input type="text" class="form-control" id="cookie_name" >
+  </div>
+  
+  <div class="col-2">
+    <label for="session_timeout">Cookie Timeout</label>
+    <input type="text" class="form-control" id="session_timeout">
+  </div>
+
+  <div class="col-3">
+    <label for="no_cookie_error" data-bs-toggle="tooltip"
+    data-bs-title="HTTP error code to return if no cookie" >No Cookie HTTP Status</label>
+    <input type="text" class="form-control" id="no_cookie_error" >
+  </div>
+</div>

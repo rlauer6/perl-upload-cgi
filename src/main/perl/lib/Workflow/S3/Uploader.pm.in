@@ -126,12 +126,12 @@ sub new {
 
   my $settings = <<'END_OF_SETTINGS';
 -------------------------------
-host...........%s
-bucket_name....%s
-bucket_prifix..%s
-profile........%s
-region.........%s
-secure.........%s
+host...........[%s]
+bucket_name....[%s]
+bucket_prifix..[%s]
+profile........[%s]
+region.........[%s]
+secure.........[%s]
 END_OF_SETTINGS
 
   $self->get_logger->info(
@@ -181,7 +181,9 @@ sub init_s3 {
 
   my $bucket = $self->check_bucket();
 
-  $self->set_bucket($bucket);
+  return $self->set_bucket($bucket);
+
+  return $s3;
 }
 
 ########################################################################
@@ -192,12 +194,26 @@ sub check_bucket {
   my $s3          = $self->get_s3;
   my $bucket_name = $self->get_bucket_name;
 
+  $self->get_logger->info( sprintf 'checking if bucket %s exists...',
+    $bucket_name );
+
   my $bucket = $s3->bucket( { bucket => $bucket_name } );
 
-  my $bucket_list = eval { $bucket->list or die $s3->errstr };
+  my $bucket_list = $bucket->list;
+
+  $self->get_logger->debug(
+    sub {
+      return Dumper(
+        [ bucket_list => $bucket_list,
+          error       => $EVAL_ERROR,
+          errstr      => $s3->errstr,
+        ]
+      );
+    }
+  );
 
   # make sure bucket exists, try creating bucket if it does not exist
-  if ( $EVAL_ERROR =~ /does\snot\sexist/xsmi ) {
+  if ( !$bucket_list || $s3->err eq 'NoSuchBucket' ) {
 
     $self->get_logger->error( sprintf 'bucket: %s does not exist',
       $bucket_name );
@@ -208,6 +224,9 @@ sub check_bucket {
       $bucket = $s3->add_bucket( { bucket => $bucket_name } )
         or die $s3->errstr;
     }
+  }
+  else {
+    $self->get_logger->info( sprintf 'bucket %s exists...', $bucket_name );
   }
 
   return $bucket;

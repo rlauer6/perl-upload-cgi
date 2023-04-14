@@ -18,7 +18,7 @@
         "timeout" : 60,
         "fix_filename": "yes",
         "metadata" : "yes",
-        "copy" : "no"
+        "store_method" : "rename"
     },
     "redis" : {
         "server" : "@redis_server@",
@@ -51,16 +51,20 @@
         "config": {
             "form" : "config-form.tt",
             "javascript": {
-                "src" : "/javascriopt/upload-config.js"
+                "src" : "/javascript/config.js"
+            },
+            "css": {
+              "src" : "/css/config.css"
             },
             "url" : "/upload/config"
         },
         "include_path" : "@apache_site_includedir@",
         "absolute" : 1,
-        "interpolate" : 0
+        "interpolate" : 1
     },
     "session" : {
         "cookie_name" : "@cookie_name@",
-        "timeout" : 15
+        "timeout" : 15,
+        "no_cookie_error" : 0
     }
 }

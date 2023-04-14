@@ -3,9 +3,7 @@ SUBDIRS = .
 
 include $(top_srcdir)/includes/apache-directories.inc
 
-JAVASCRIPT = \
-    config.js \
-    upload.js
+CSS = \
+    config.css
 
-dist_apache_site_javascript_DATA = \
-    $(JAVASCRIPT)
+dist_apache_site_css_DATA = $(CSS)

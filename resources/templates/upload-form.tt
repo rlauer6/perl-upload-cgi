@@ -1,9 +1,13 @@
+[% bootstrap = config.template.bootstrap %]
+[% jquery = config.template.jquery %]
+[% upload = config.template.upload %]
+
 <link rel="stylesheet" href="[% bootstrap.stylesheet %]" type="text/css" />
 
 <script type="text/javascript" src="[% jquery.javascript.src %]"
         [%IF jquery.javascript.integrity %]integrity="[% jquery.javascript.integrity %]"[% END %]
-        [%IF jquery.javascript.crossorigin %]crossorigin="[% jquery.javascript.crossorigin %]">[% END%]
-</script>
+        [%IF jquery.javascript.crossorigin %]crossorigin="[% jquery.javascript.crossorigin %]"[% END%]
+></script>
 
 <script type="text/javascript" src="[% upload.javascript.src %]"></script>
 

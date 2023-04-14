@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# script to provision conatainer w/Perl dependencies
+# script to provision container w/Perl dependencies
 #
 # after bringing up the Docker compose stack...
 
@@ -28,12 +28,13 @@ elif test -z "$1"; then
     ./configure \
         --with-apache-vhostdir=/var/www \
         --with-apache-port=8080 \
-        --with-apache-loglevel=debug \
+        --with-apache-loglevel=trace8 \
         --sysconfdir=/etc \
         --localstatedir=/var \
         --with-s3-host=http://s3.localhost.localstack.cloud:4566 \
         --with-bucket-prefix=uploads \
-        --with-redis-server=redis
+        --with-redis-server=redis \
+        --enable-apache-log-console
 
     make && make install
     

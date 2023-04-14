@@ -92,6 +92,8 @@ do_subst_command='do_subst = sed \
   -e '"'"'s,[@]apache_loglevel[@],$(apache_loglevel),g'"'"' \
   -e '"'"'s,[@]httpd_confdir[@],$(httpd_confdir),g'"'"' \
   -e '"'"'s,[@]httpd_confddir[@],$(httpd_confddir),g'"'"' \
+  -e '"'"'s,[@]error_log[@],$(error_log),g'"'"' \
+  -e '"'"'s,[@]custom_log[@],$(custom_log),g'"'"' \
 \
   -e '"'"'s,[@]apache_site_work_dir[@],$(apache_site_work_dir),g'"'"' \
   -e '"'"'s,[@]apache_site_spool_dir[@],$(apache_site_spool_dir),g'"'"' \
@@ -188,6 +190,7 @@ AC_SUBST([perl5libdir])
 
 AX_REQUIRED_PERL_MODULES
 APACHE_CONFIG
+APACHE_LOG_CONSOLE
 AX_DISTCHECK_HACK
 AX_DEPS_CHECK
 AX_PERLDEPS_CHECK
@@ -271,6 +274,7 @@ AC_CONFIG_FILES([
     src/Makefile
     src/main/Makefile
     src/main/javascript/Makefile
+    src/main/css/Makefile
     src/main/images/Makefile
     src/main/perl/Makefile
     src/main/perl/lib/Makefile
@@ -305,6 +309,7 @@ printf "\n"
 printf "                   Apache port: %s\n" "`__poor_mans_expand_file_name apache_port`"
 printf "               Apache log level: %s\n" "`__poor_mans_expand_file_name apache_loglevel`"
 printf "               Apache site dir: %s\n" "`__poor_mans_expand_file_name apache_vhostdir`"
+printf "         Apache log to console: %s\n" "`__poor_mans_expand_file_name apache_log_console`"
 dnl printf "               Apache: %s\n" "`__poor_mans_expand_file_name apache_`"
 printf "\n"
 printf "                    Maintainer: ${PACKAGE_BUGREPORT}\n"

@@ -1,3 +1,66 @@
+Wed Apr 12 12:13:05 2023  Rob Lauer  <rlauer6@comcast.net>
+
+	[1.1.2]:
+	* VERSION: bump
+	* src/main/css/Makefile.am: new
+	* src/main/css/config.css: new
+	* configure.ac
+	- add above css to build
+	- add APACHE_LOG_CONSOLE
+	(do_subst_command): + @error_log@, @custom_log@
+	* src/main/Makefile.am: likewise
+	* resources/Makefile.am: add below to build
+	* resources/templates/config-form-redis.tt: new
+	* resources/templates/config-form-session.tt: new
+	* resources/templates/config-form-upload.tt: new
+	* resources/templates/save-cancel.tt: new
+	* resources/templates/spinner.tt: new
+	* resources/templates/toast.tt: new
+	* resources/templates/config-form.tt: refactored to use above
+	* resources/templates/upload-form.tt: likewise
+	* src/main/javascript/config.js: new
+	* src/main/javascript/Makefile.am: add above to build
+	* src/main/perl/t/00-progress.t: new
+	* src/main/javascript/upload.js: log data returned by /upload/init
+	* config/apache2-upload-progress.json.in
+	- add store_method to upload section
+	- add css to config section
+	* src/main/perl/lib/Apache2/Upload/Progress.pm.in
+	- don't call Apache2::Module::add unless running under mod_perl
+	(boolean): new
+	(v_is_boolean): new
+	(v_is_byte_str): new
+	(v_is_dir): new
+	(v_is_num): new
+	(v_is_one_of): new
+	(v_is_valid_str): new
+	(upload_config)
+	- only return JSON if text/hmtl not set
+	- save config
+	(output_json)
+	- return Apache2::Const::OK
+	- use custom_response() if not OK
+	(process_template): accept config, name now
+	(get_config_form): change based above
+	(get_upload_form): likewise
+	(post_config): output loglevel
+	(init_config): set max logleve to Apache2::Const::LOG_DEBUG
+	* src/main/perl/lib/Apache2/Upload/Progress/Constants.pm.in
+	- more chars
+	* config/Makefile.am
+	- use list from includes/apache-directories.inc
+	- change ownership of web directories
+	- add GHTTP_CONFIG to CLEANFILES
+	- use AM_CONDITIONAL to configure Apache custom_log, error_log
+	* build: add --enable-apache-log-console for building docker container
+	* perl-upload-cgi.conf.in
+	- use @custom_log@, @error_log@ to configure Apache logs
+	* src/main/perl/lib/Workflow/S3/Uploader.pm.in
+	(new): neaten up settings report
+	(init_s3): return s3 object
+	(check_bucket)
+	- check $bucket_list and $s3->err, not $EVAL_ERROR
+
 Mon Apr 10 15:17:32 2023  Rob Lauer  <rlauer6@comcast.net>
 
 	[1.1.1]:
@@ -15,7 +78,7 @@ Mon Apr 10 15:17:32 2023  Rob Lauer  <rlauer6@comcast.net>
 	- instantiate req if it doesn't exist
 	- add upload_config endpoint
 	(upload_version)
-	- use is_progre
+	- use is_progress_enabled
 	(upload_form)
 	- return HTTP error if no_cookie_error set && no cookie found
 	(upload_config): new
@@ -63,7 +126,7 @@ Mon Apr 10 15:17:32 2023  Rob Lauer  <rlauer6@comcast.net>
 	- add Apache2::Upload::Progress::Constants.pm.in to build
 	* resource/templates/config-form.tt: new
 	* resources/Makefile.am
-	- add aove config-form.tt to build
+	- add above config-form.tt to build
 	* resources/templates/upload-form.tt
 	- reorganized template section of config to support multiple templates
 	* src/main/perl/lib/Apache2/Upload/Progress/Constants.pm.in: new

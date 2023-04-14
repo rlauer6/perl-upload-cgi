@@ -1,22 +1,19 @@
+#
+# this file is generated from by a Makefile
+#
 SetEnv     CONFIG_PATH @apache_site_configdir@
 PerlSetEnv CONFIG_PATH @apache_site_configdir@
 
-# useful for debugging request/responses
-LogLevel   trace8
+# debug  => useful for general debugging
+# trace8 => useful for request/response inspection
+# info   => useful for production
+LogLevel   @apache_loglevel@
 
-# useful for general debuggin
-#LogLevel   debug 
-
-#LogLevel   info
 LogFormat  "%h %l %u %t \"%r\" %>s %O \"%{Referer}i\" \"%{User-Agent}i\"" combined
 
-# useful when NOT running in a Docker container
-#ErrorLog   @apache_site_logdir@/error_log
-#CustomLog  @apache_site_logdir@/access_log combined
-
-# useful when running in a Docker container
-ErrorLog   /dev/stdout
-CustomLog  /dev/stdout combined
+# --enable-apache-log-consoel useful when running in a Docker container
+ErrorLog   @error_log@
+CustomLog  @custom_log@
 
 IncludeOptional @datadir@/@PACKAGE@/apache2-upload-progress-redis.conf
 

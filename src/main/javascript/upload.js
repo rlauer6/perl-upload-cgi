@@ -312,7 +312,8 @@ function init_upload (file_list) {
       url: "/upload/init",
       contentType: 'application/json',
       data: JSON.stringify(file_list),
-      success: function (data) {
+        success: function (data) {
+            logit(data);
         $("#upload-btn").attr("disabled", false);
         
         $.each(data, function(i, info) {

@@ -1,21 +1,69 @@
-<link rel="stylesheet" href="[% bootstrap.stylesheet %]" type="text/css" />
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Upload Configuration</title>
+    [% bootstrap = config.template.bootstrap %]
+    [% jquery = config.template.jquery %]
+    [% upload = config.upload %]
+    [% session = config.session %]
+    [% redis = config.redis %]
+    [% config = config.template.config %]
+    [% accordion = "config" %]
+    [% form_id = "upload_config" %]
 
-<script type="text/jquery.javascript" src="[% jquery.javascript.src %]"
-[%IF jquery.javascript.integrity %]integrity="[% jquery.javascript.integrity %]"[% END %]
-[%IF jquery.javascript.crossorigin %]crossorigin="[% jquery.javascript.crossorigin %]">[% END %]
-</script>
+    [%IF jquery.javascript.integrity %]
+    [% integrity = 'integrity="' _ jquery.javascript.integrity _ '"' %]
+    [% END %]
+    
+    [%IF jquery.javascript.crossorigin %]
+    [% crossorigin = 'crossorigin="' _ jquery.javascript.crossorigin _ '"' %]
+    [% END %]
+    
+    <link rel="stylesheet" href="[% bootstrap.stylesheet %]" type="text/css" />
+    <link rel="stylesheet" href="[% config.css.src %]" type="text/css" />
+    
+    <script type="text/javascript" src="[% jquery.javascript.src %]" [% integrity %] [% crossorigin %]></script>
 
-<script type="text/javascript" src="[% config.javascript.src %]"></script>
+    <script type="text/javascript" src="[% config.javascript.src %]"></script>
+  </head>    
 
-<div class="container mt-3">
+  <body>
+     [% INCLUDE "spinner.tt" %]
 
-  <form method="POST" id="upload-config" action="[% config.url %]">
+      <div id='alert-placeholder'></div>
 
-    <button class="btn btn-primary" id="upload-btn">Save</button>
-    <button class="btn btn-secondary" id="cancel-btn">Cancel</button>
-  </form>
+      <div class="container mt-3">
+        
+        <form method="POST" id="[% form_id %]" action="">
+        
+          [% FOR section IN ["upload", "redis", "session"] %]
+          <div class="accordion" id="[% section %]-section">
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-[% section %]" aria-expanded="true" aria-controls="collapse-[% section %]">
+                [% section | ucfirst %]
+                </button>
+              </h2>
+              
+              <div id="collapse-[% section %]" class="accordion-collapse collapse show">
+                <div class="accordion-body">
+                  [% form = accordion _ '-form-' _ section _ '.tt' %]
+                  [% INCLUDE $form %]
+                </div>
+              </div>
+            </div>
+          </div>
+          [% END %]
 
-</div>
+          [% INCLUDE "save-cancel.tt" %]
 
-<script type="text/javascript" src="[% bootstrap.javascript.src %]"></script>
+        </form>
+        
+      </div>
+      
+      [% INCLUDE "toast.tt" %]
+      
+      <script type="text/javascript" src="[% bootstrap.javascript.src %]"></script>
 
+    </body>
+</html>

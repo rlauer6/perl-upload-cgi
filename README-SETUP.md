@@ -358,6 +358,7 @@ sudo systemctl start inotify
 # `systemd` tips
 
 | Function | Command | 
+| -------- | ------- |
 | Start service | `systemctl start inotify` |
 | Stop service | `systemctl stop inotify` |
 | Reload (SIGHUP) | `systemctl reload inotify` |

@@ -5,31 +5,34 @@ to test the POC.
 
 # How the POC Works
 
-See [README.md](README.md) for more details on how the POC works,
+See [README.md](README.md) form more details on how the POC works,
 however as a reminder...
 
-* an HTML page with an upload for is created by visiting
+* An HTML page with an upload for is displayed by visiting
   `/upload/form`. This forms allows a user to upload files to a
-  webserver (and eventually Amazon S3). The page is constructed using
-  some Javascript and Bootstrap elements.
-* files are uploaded to a local directory on the web server. The
+  webserver (and eventually Amazon S3).
+      * The page is constructed using some Javascript and Bootstrap elements.
+* Files are uploaded to a local directory on the web server. The
   directory is monitored by a Linux `inotify` process.
-* the `inotify` process responds to files being placed in the watched
+* The `inotify` process responds to files being placed in the watched
   directory by uploading them to Amazon S3.  This process is
   implemented using
   [`Workflow::Inotify`](https://metacpan.org/pod/Workflow::Inotify)
   and the Perl module included in this project
   [`Workflow::S3::Uploader`](src/main/perl/lib/Workflow/S3/Uploader.pm.in).
-* a Redis cache is used to store the progress of files as they being
-  uploaded. The upload page uses Ajax calls to retrieve status
-  information regarding each file's upload progress from the Redis
-  cache
-* Javascript on the upload page updates the Bootstrap progress bars
-  using the data return by the Ajax call to retrieve file upload progress
+* A Redis cache is used to store the progress of files as they are being
+  uploaded.
+      * The upload page uses Ajax calls to retrieve status information
+        regarding each file's upload progress from the Redis cache
+      * A Redis cache running on a remote server should be used if you
+        plan on implementing multiple upload servers
+* The upload page updates the Bootstrap progress bars
+  using the data return by an Ajax call to retrieve file upload progress
 
 # Requirements
 
-* A web server running Apache and `mod_perl`
+* A web server running Apache and `mod_perl` configured with the Perl
+  modules provided by this project
 * A Redis server
 * [Localstack](https://localstack.cloud/) running on port 4566 (used to mock Amazon S3)
 
@@ -74,7 +77,7 @@ provided in the project.
 Login to the web server.
 
 ```
-docker exec -it docker_web_1 /bin/bash
+docker run -it -v '/tmp/scratch:/tmp' docker_web_1 /bin/bash
 ```
 
 A script ([build](build)) has been provided that you can run after
@@ -82,8 +85,12 @@ producing a tarball and copying it to your web server. See [Building
 the Distribution Package](#building-the-distribution-package)) for
 details on how to create a tarball.
 
-Hint: I typically map a local temporary directory to the Docker container's
+> Hint: I typically map a local temporary directory to the Docker container's
  `/tmp/scratch` directory and copy the tarball and the `build` script there.
+
+```
+cp build /tmp/scratch
+```
 
 ```
  #!/usr/bin/env bash
@@ -164,9 +171,21 @@ Check the log file for any errors.
 less /var/log/perl-upload-cgi.log
 less /var/www/log/perl-upload-cgi.log
 ```
+
+> This is a POC. The steps above were implemented to allow for rapid
+> prototyping, debugging and further development. Eventually, the
+> container should be pre-built with the application. The POC creates
+> a bare bones Apache webserver container suitable for hosting the
+> application.
+
 # Hints and Reminders
 
 ## Running in a Dockerized Environment
+
+The `docker-compose.yaml` file below will bring up a stack consisting
+the bare bones web server, a Redis server and LocalStack for mocking
+S3.
+
 
 ```
 version: "3.9"
@@ -225,6 +244,39 @@ services:
 > `/etc/workflow/config.d/upload.cfg` file to a true value.
 
 ```
+[watch_upload]
+dir      = /usr/local/var/www/spool
+mask     = IN_MOVED_TO | IN_CLOSE_WRITE
+handler  =  Workflow::S3::Uploader
+
+[global]
+sleep = 0
+block = yes 
+logfile = /usr/local/var/log/perl-upload-cgi.log
+verbose = yes
+perl5lib = /usr/local/share/perl5
+daemonize = yes 
+
+# -- Workflow::S3::Uploader
+[workflow_s3_uploader]
+host          = https://s3.amazonaws.com
+profile       = 
+bucket_name   = test-bucket
+bucket_prefix = /
+region        = us-east-1
+create_bucket = yes
+
+log4perl_conf =<<END_OF_CONF
+log4perl.rootLogger = DEBUG, File
+log4perl.appender.File = Log::Log4perl::Appender::File
+log4perl.appender.File.filename = /usr/local/var/www/log/perl-upload-cgi.log
+log4perl.appender.File.mode = append
+log4perl.appender.File.layout = PatternLayout
+log4perl.appender.File.layout.ConversionPattern=[%d] (%r/%R) %M:%L - %m%n
+END_OF_CONF
+```
+
+```
 aws s3 \
   --endpoint-url http://localhost:4566 \
   --profile localstack \
@@ -233,9 +285,13 @@ aws s3 \
 
 ## Chromebook
 
-If you want to use your Chromebook browser to access the webserver,
-you must port forward 8080. You can do this by accessing the
-_Advanced>Developers>Linux development environment settings_.
+I do my development on a Chromebook in their Linux environment. If you
+want to use your Chromebook browser to access the webserver running in
+Chromebook's Linux environment you must port forward 8080. You can do
+this by accessing the _Advanced>Developers>Linux development
+environment settings_.
+
+![screenshot](src/main/images/developer-tools.png)
 
 ## Building the Distribution Package
 
@@ -249,7 +305,39 @@ on the target server.
 make && make dist
 ```
 
-This will create a tarball that you can install on your target server.
+The `configure` script will check project dependencies including
+require Perl module (and their versions). Normally, if dependencies
+are missing the configure step will fail.  You can disable dependency
+checking using the `--disable-deps` option to `configure`.
+
+The build process will also syntax check all Perlscripts and
+modules. If some depenciees are missing dependencies the build will fail.
+
+You can disable syntax checking when you build the
+distribution tarball using the `--enable-rpm-build-mode` option.
+
+```
+./configure --disable-deps --enable-rpm-build-mode
+```
+
+If you do want to install the dependencies locally you can install
+them using `cpanm` as shown below.
+
+_Note that `make cpan`  will install the *latest* version of all
+of the dependencies, possibly upgrading modules you already have
+installed!  If you do not want this to occur, you should note the
+missing dependencies one by one and install them individually._
+
+
+```
+make cpanm && make cpan
+```
+
+> Note that you do not need to worry about the configuration at this
+  point, we are simply creating a tarball. When we build in the
+  container, we will set specific configuration values
+
+This will create a tarball that you can now copy to the container.
 
 Unpack the tarball and configure the software with optional arguments.
 
@@ -279,18 +367,6 @@ $ ./configure --localstatedir=/var --sysconfdir=/etc \
     --with-profile=localstack
 ```
 
-The `configure` script will check to see if you have the required Perl
-modules.  If some are missing you can install them using `cpanm` as
-shown below.
-
-_Note that `make cpan`  will install the *latest* version of all
-of the dependencies, possibly upgrading modules you already have
-installed!  If you do not want this to occur, you should note the
-missing dependencies one by one and install them individually._
-
-```
-make cpanm && make cpan
-```
 
 Once `configure` successfully completes, you can now build and install
 the software.

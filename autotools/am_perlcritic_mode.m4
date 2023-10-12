@@ -1,6 +1,6 @@
 AC_DEFUN([PERLCRITIC_MODE], [
 
-    AC_MSG_CHECKING([[whether to enable build mode]])
+    AC_MSG_CHECKING([[whether to enable perlcritic mode]])
 
     AC_ARG_ENABLE([perlcritic_mode],
         [[  --enable-perlcritic-mode       configure mode (disables certain checks), default: true]],

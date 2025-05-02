@@ -19,18 +19,18 @@ use Apache2::Filter qw[];
 use Apache2::CmdParms;
 use Apache2::Directive;
 use Apache2::RequestRec qw(content_type);
-use Apache2::RequestIO  qw[];
-use Apache2::Response   qw[];
+use Apache2::RequestIO qw[];
+use Apache2::Response qw[];
 use Apache2::Request;
 use Apache2::Connection;
 use Apache2::Upload;
 use Apache2::ServerRec;
 use Apache2::ServerUtil qw(get_handlers);
-use Apache2::Module     ();
+use Apache2::Module ();
 
 use APR::Const -compile => qw( SUCCESS );
 use APR::Brigade qw();
-use APR::Bucket  qw();
+use APR::Bucket qw();
 use APR::SockAddr;
 use APR::Table qw();
 
@@ -38,9 +38,9 @@ use Carp::Always;
 use Class::Accessor::Fast;
 use Data::Dumper;
 use Data::UUID;
-use Date::Format   qw(time2str);
-use Digest::MD5    qw(md5_hex);
-use English        qw(-no_match_vars);
+use Date::Format qw(time2str);
+use Digest::MD5 qw(md5_hex);
+use English qw(-no_match_vars);
 use File::Basename qw(fileparse basename);
 use File::Copy;
 use File::Spec qw();
@@ -49,7 +49,7 @@ use List::Util qw(max min any pairs none uniq);
 use Log::Log4perl::Level;
 use Log::Log4perl;
 use Number::Bytes::Human qw(format_bytes parse_bytes);
-use Scalar::Util         qw(reftype blessed looks_like_number);
+use Scalar::Util qw(reftype blessed looks_like_number);
 use Template;
 use Time::HiRes qw(sleep gettimeofday);
 
@@ -303,7 +303,7 @@ sub upload {
     canonical_name => basename($canonical_name),
   );
 
-  $r->log->debug( '           name: ' . $name ); # form var name
+  $r->log->debug( '           name: ' . $name );  # form var name
   $r->log->debug( '           size: ' . $upload->size() );
   $r->log->debug( '           type: ' . $upload->type() );
   $r->log->debug( '       filename: ' . $upload->filename() );
@@ -321,8 +321,7 @@ sub upload {
 
   # save the metadata if asked to
   if ( boolean( $config->get_upload->{metadata} ) ) {
-    my $metadata_file
-      = eval { save_upload_metadata( metadata => \%metadata, path => $dest, ); };
+    my $metadata_file = eval { save_upload_metadata( metadata => \%metadata, path => $dest, ); };
 
     if ( !$metadata_file || $EVAL_ERROR ) {
       $r->log->warn( 'could not save metadata: ' . $EVAL_ERROR );
@@ -482,24 +481,21 @@ sub store_upload_file {
   );
 
   if ( !-w $config->get_upload->{path} ) {
-    $r->log->error( sprintf '%s is not writable...check permissions!',
-      $config->get_upload->{path} );
+    $r->log->error( sprintf '%s is not writable...check permissions!', $config->get_upload->{path} );
   }
   else {
     my $store_method = $config->get_upload->{store_method};
     $store_method //= 'rename';
 
     if ( none { $_ eq lc $store_method } qw(copy link rename symlink) ) {
-      $r->log->error(
-        'unknown store_method ' . $store_method . ' setting to copy' );
+      $r->log->error( 'unknown store_method ' . $store_method . ' setting to copy' );
       $store_method = 'copy';
     }
 
     $methods{$store_method}->( $src, $dest );
 
     if ( !-e $dest ) {
-      $r->log->error( sprintf 'could not store %s using method %s: %s',
-        $src, $store_method, $OS_ERROR );
+      $r->log->error( sprintf 'could not store %s using method %s: %s', $src, $store_method, $OS_ERROR );
     }
 
   }
@@ -540,8 +536,7 @@ sub set_upload_options {
 
   my $post_max = set_post_max( $r, $req, $config );
 
-  $r->log->debug( sprintf 'temp_dir: %s post_max: %s',
-    $req->temp_dir, $req->read_limit );
+  $r->log->debug( sprintf 'temp_dir: %s post_max: %s', $req->temp_dir, $req->read_limit );
 
   return $req;
 }
@@ -619,9 +614,7 @@ sub set_post_max {
     }
     elsif ( $post_max > $read_limit ) {
       $r->log->warn('configured POST_MAX is greater than APREQ2_ReadLimit!');
-      $r->log->warn( 'cannot set limit to '
-          . $post_max
-          . ' increase APREQ2_ReadLimit first' );
+      $r->log->warn( 'cannot set limit to ' . $post_max . ' increase APREQ2_ReadLimit first' );
     }
     else {
       $r->log->debug( 'setting POST_MAX to ' . $post_max );
@@ -659,10 +652,8 @@ sub create_upload_metadata {
 ########################################################################
   my ( $r, %args ) = @_;
 
-  my ( $upload, $session_id, $upload_id, $path, $upload_date,
-    $canonical_name, $name )
-    = @args{
-    qw(upload session_id upload_id path upload_date canonical_name name)};
+  my ( $upload, $session_id, $upload_id, $path, $upload_date, $canonical_name, $name )
+    = @args{qw(upload session_id upload_id path upload_date canonical_name name)};
 
   my %metadata = (
     tempname       => $upload->tempname(),
@@ -752,11 +743,9 @@ sub is_path_writable {
   my ( undef, undef, $user_uid )  = getpwnam $user;
   my ( undef, undef, $group_gid ) = getgrnam $group;
 
-  $r->log->debug( sprintf 'Apache user: %s(%d)',
-    ( $user // $EMPTY ), $user_uid );
+  $r->log->debug( sprintf 'Apache user: %s(%d)', ( $user // $EMPTY ), $user_uid );
 
-  $r->log->debug( sprintf 'Apache group: %s(%d)',
-    ( $group // $EMPTY ), $group_gid );
+  $r->log->debug( sprintf 'Apache group: %s(%d)', ( $group // $EMPTY ), $group_gid );
 
   my $path = $config->get_upload->{path} // $EMPTY;
 
@@ -774,8 +763,7 @@ sub is_path_writable {
     }
   }
   else {
-    $r->log->error(
-      sprintf 'path value is empty...you cannot upload files.' );
+    $r->log->error( sprintf 'path value is empty...you cannot upload files.' );
 
     return $FALSE;
   }
@@ -803,7 +791,7 @@ sub elapsed_time {
   my ( $start_time, $end_time ) = @_;
 
   if ( !defined $end_time ) {
-    $end_time = to_microseconds(); # now
+    $end_time = to_microseconds();  # now
   }
 
   my $elapsed_time = $end_time - $start_time;
@@ -838,8 +826,7 @@ sub list_endpoints {
   my ($s) = @_;
 
   foreach ( sort keys %{ {@API_ENDPOINTS} } ) {
-    $s->log->info( sprintf '...http://%s:%s%s',
-      $s->server_hostname, $s->port, $_ );
+    $s->log->info( sprintf '...http://%s:%s%s', $s->server_hostname, $s->port, $_ );
   }
 
   return;
@@ -879,14 +866,13 @@ sub post_config {
   if ( !$PROGRESS_CLASS ) {
     $s->log->error( 'No progress handler defined for ' . __PACKAGE__ );
 
-    return Apache2::Const::OK; # may want to return something else?
+    return Apache2::Const::OK;  # may want to return something else?
   }
 
   $PROGRESS_CLASS = load_progress_class( $s, $PROGRESS_CLASS );
 
   if ($PROGRESS_CLASS) {
-    $s->log->info(
-      'Successfully initialized ' . __PACKAGE__ . ' endpoints:' );
+    $s->log->info( 'Successfully initialized ' . __PACKAGE__ . ' endpoints:' );
 
     list_endpoints($s);
   }
@@ -909,7 +895,7 @@ sub load_progress_class {
 
     $class->import(':DEFAULT');
 
-    no strict 'refs'; ## no critic ProhibitNostrict
+    no strict 'refs';  ## no critic ProhibitNostrict
 
     foreach (@REQUIRED_METHODS) {
       die sprintf q{ERROR: handlers must implement the '%s()' method}, $_
@@ -948,8 +934,7 @@ sub load_progress_class {
   return $class
     if $retval;
 
-  $s->log->error( 'could not initialize handler: %s, %s',
-    $class, $EVAL_ERROR );
+  $s->log->error( 'could not initialize handler: %s, %s', $class, $EVAL_ERROR );
 
   return $EMPTY;
 }
@@ -1012,8 +997,7 @@ sub init_config {
 
   $UPLOAD_CONFIG->follow_best_practice;
 
-  $UPLOAD_CONFIG->mk_ro_accessors( uniq @REQUIRED_CONFIGURATION_VARS,
-    keys %{$self} );
+  $UPLOAD_CONFIG->mk_ro_accessors( uniq @REQUIRED_CONFIGURATION_VARS, keys %{$self} );
 
   return
     if !is_path_writable( $r, $UPLOAD_CONFIG );
@@ -1072,14 +1056,12 @@ sub v_is_valid_str {
       if !$options{empty} && ( !defined $value || $value eq $EMPTY );
 
     if (@allowed) {
-      die sprintf "%s has invalid characters, must be one of %s\n", $field,
-        join $COMMA, @allowed
+      die sprintf "%s has invalid characters, must be one of %s\n", $field, join $COMMA, @allowed
         if any { $options{allowed} !~ /$_/xsm } split //xsm, $value;
     }
 
     if (@forbidden) {
-      die sprintf "%s has invalid characters, cannot include %s\n", $field,
-        join $COMMA, @forbidden
+      die sprintf "%s has invalid characters, cannot include %s\n", $field, join $COMMA, @forbidden
         if any { $options{forbidden} =~ /$_/xsm } split //xsm, $value;
     }
   };
@@ -1214,7 +1196,7 @@ sub validate_config {
         $f, $v,
         empty     => $TRUE,
         forbidden => "\t" . ' ()<>\@,;:\"/\[\]\?=\{\}'
-      ); ## no critic RequireInter
+      );  ## no critic RequireInter
     },
     timeout => sub {
       my ( $f, $v ) = @_;
@@ -1237,8 +1219,7 @@ sub validate_config {
     $r->log->info( 'validating section ' . $s );
 
     foreach my $f ( keys %{ $sections{$s} } ) {
-      $r->log->info( 'validating ' . $f . ' value ' . $config->{$s}->{$f}
-          // $EMPTY );
+      $r->log->info( 'validating ' . $f . ' value ' . $config->{$s}->{$f} // $EMPTY );
 
       die $EVAL_ERROR
         if !$sections{$s}->{$f}->( $f, $config->{$s}->{$f} );
@@ -1474,7 +1455,7 @@ sub get_upload_id {
 }
 
 ########################################################################
-sub track_progress { ## no critic (ProhibitManyArgs)
+sub track_progress {  ## no critic (ProhibitManyArgs)
 ########################################################################
   my ( $class, $f, $bb, $mode, $block, $readbytes ) = @_;
 
@@ -1710,13 +1691,11 @@ sub create_cookie {
 
   my $config = get_config($r);
 
-  my $expiry_time_minutes = $config->get_session->{timeout}
-    // $DEFAULT_SESSION_TIMEOUT;
+  my $expiry_time_minutes = $config->get_session->{timeout} // $DEFAULT_SESSION_TIMEOUT;
 
   my $expiry_time_secs = $expiry_time_minutes * 60 * 60;
 
-  my $expiry_date
-    = time2str( '%a, %d-%b-%Y %H:%M:%S GMT', time + $expiry_time_secs );
+  my $expiry_date = time2str( '%a, %d-%b-%Y %H:%M:%S GMT', time + $expiry_time_secs );
 
   my $cookie_name = $config->get_session->{cookie_name};
 
@@ -1744,9 +1723,7 @@ sub bake_cookie {
 ########################################################################
   my (@cookie) = @_;
 
-  my $cookie = join '; ',
-    map { defined $_->[1] ? $_->[0] . $EQUALS_SIGN . $_->[1] : $_->[0] }
-    pairs @cookie;
+  my $cookie = join '; ', map { defined $_->[1] ? $_->[0] . $EQUALS_SIGN . $_->[1] : $_->[0] } pairs @cookie;
 
   return $cookie;
 }
@@ -1815,10 +1792,9 @@ sub configure {
 
   my $namespace = __PACKAGE__;
 
-  $val =~ s/^(.*)>$/$1/xsm; # Clean trailing ">"
+  $val =~ s/^(.*)>$/$1/xsm;  # Clean trailing ">"
 
-  my $error = $parms->check_cmd_context(
-    Apache2::Const::NOT_IN_LIMIT | Apache2::Const::NOT_IN_DIR_LOC_FILE );
+  my $error = $parms->check_cmd_context( Apache2::Const::NOT_IN_LIMIT | Apache2::Const::NOT_IN_DIR_LOC_FILE );
 
   die $error
     if $error;
@@ -1826,8 +1802,7 @@ sub configure {
   my $dir = $parms->directive->as_hash->{'UploadProgress'}->{$val};
 
   if ( $dir && keys %{$dir} ) {
-    if ( none { defined $dir->{$_} }
-      qw(UploadProgressHandler UploadProgressConfig) ) {
+    if ( none { defined $dir->{$_} } qw(UploadProgressHandler UploadProgressConfig) ) {
       die "UploadProgress block must include $_\n";
     }
   }
@@ -1899,7 +1874,7 @@ Apache2::Upload::Progress - mod_perl based upload with progress monitoring
  PerlPostConfigHandler Apache2::Upload::Progress::post_config
  
  <UploadProgress>
-   UploadProgressHandler Apach2::Upload::Progress:Redis>
+   UploadProgressHandler Apach2::Upload::Progress::Redis>
    UploadProgressConfig apache2-upload-progress.json>
  </UploadProgress>
 
@@ -2371,7 +2346,7 @@ value is currently not used.
 This API call will store the file list in a cache with a configurable
 expire time (if your caching implements expirations). If the web
 client does not upload the files before the expire time the cache will
-be emptied. Expiraration of cached elements is not done for you - your
+be emptied. Expiration of cached elements is not done for you - your
 cache implementation must provide this capability.
 
 After calling the endpoint you can immediately call the status
@@ -2708,14 +2683,16 @@ Number of seconds after which the entry should be expired.
 
 =back
 
-=head2 init_session_cache
+=head2 Required Methods
+
+=head3 init_session_cache
 
  init_session_cache(s)
 
 Perform whatever initialization ritual necessary for your
 implementation. Return a true value to indication success.
 
-=head2 get_session_key, set_session_key
+=head3 get_session_key, set_session_key
 
  get_session_key(r, id)
  set_session_key(r, id, value, expire-time )
@@ -2725,14 +2702,14 @@ identier. The method will be called to retrieve the serialized version
 of the status object.  C<value> will be a hash that you may need to
 serialize before storing to your cache.
 
-=head2 get_all_session_keys
+=head3 get_all_session_keys
 
  get_all_session_keys(r, session-id)
 
 Should return an array containing all of the keys stored for the
 specified session.
 
-=head2 get_upload_status
+=head3 get_upload_status
 
  get_upload_status(r, id)
 
@@ -2740,7 +2717,7 @@ Returns the object that was stored when the C<set_session_key()>
 method was called. This method is called when the web client access
 the C</upload/status> endpoint.
 
-=head2 flush_session_cache
+=head3 flush_session_cache
 
  flush_session_cache(r, session-id)
 
@@ -2785,6 +2762,22 @@ caching mechanism|/CREATING YOUR OWN CACHING MECHANISM> or use the
 reference implementation handler as shown above.
 
 =back
+
+=head1 IMPLEMENTATION NOTES
+
+Upload monitoring is achieved by implementing a input filter and setting that 
+with the `add_input_filter()` method.
+
+  $r->add_input_filter( $class . '->track_progress' );
+
+The `track` progress method receives information about the input state
+and a customizable context object.
+
+  my ( $class, $f, $bb, $mode, $block, $readbytes ) = @_;
+
+The context object is attached to the filter. We use that to store
+metadata about the progress of the file. At the same time we store the
+progress to the cache (Redis in our reference implementation).
 
 =head1 REPOSITORY
 

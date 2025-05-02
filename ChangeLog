@@ -1,3 +1,11 @@
+Fri May  2 14:39:10 2025  Rob Lauer  <rlauer6@comcast.net>
+
+	[1.1.4]:
+	* README-SETUP.md: doc tweaks
+	* README.md: likewise
+	* VERSION: bump
+	* src/main/perl/lib/Apache2/Upload/Progress.pm.in
+
 Fri Apr 14 14:37:18 2023  Rob Lauer  <rlauer6@comcast.net>
 
 	[1.1.3]:

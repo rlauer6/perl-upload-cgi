@@ -3,6 +3,10 @@
 This is a _proof-of-concept_ project that demonstrates the use of
 Redis to monitor multiple file uploads.
 
+_The name of the project is a bit of misnomer. This project implements
+a `mod_perl` handler that uses `Apache2::Upload` to upload files to a
+web server. It is **NOT** a Perl CGI._
+
 The project also demonstrates the use of Bootstrap progress bars.
 
 ![screenshot](src/main/images/perl-upload-cgi-1.png)
@@ -17,7 +21,7 @@ The project also demonstrates the use of Bootstrap progress bars.
 
 # Solution
 
-* Uuse a Perl CGI or `mod_perl` handler to handle upload requests
+* Use a Perl CGI or `mod_perl` handler to handle upload requests
 * Implement a mechanism to record the upload progress for each
   file to a Redis cache
 * Provide an API for retrieving status information on each file

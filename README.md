@@ -1,7 +1,7 @@
 # Upload Files POC
 
 This is a _proof-of-concept_ project that demonstrates the use of
-Redis to monitor file uploads.
+Redis to monitor multiple file uploads.
 
 The project also demonstrates the use of Bootstrap progress bars.
 
@@ -17,13 +17,13 @@ The project also demonstrates the use of Bootstrap progress bars.
 
 # Solution
 
-* use a Perl CGI or `mod_perl` handler to handle upload requests
-* implement a mechanism to record the upload progress for each
+* Uuse a Perl CGI or `mod_perl` handler to handle upload requests
+* Implement a mechanism to record the upload progress for each
   file to a Redis cache
-* provide an API for retrieving status information on each file
-* use a Javascript Ajax call to request status information from the
+* Provide an API for retrieving status information on each file
+* Use a Javascript Ajax call to request status information from the
   API every 1/10th of a second during the upload 
-* use a Bootstrap progress bar to give visual feedback to the user
+* Use a Bootstrap progress bar to give visual feedback to the user
 
 ![Bootstrap Uploader](bootstrap-uploader.png)
 

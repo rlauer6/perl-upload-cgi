@@ -13,7 +13,7 @@ however as a reminder...
   webserver (and eventually Amazon S3).
       * The page is constructed using some Javascript and Bootstrap elements.
 * Files are uploaded to a local directory on the web server. The
-  directory is monitored by a Linux `inotify` process.
+  directory is monitored by a [Linux `inotify`](https://en.wikipedia.org/wiki/Inotify) process.
 * The `inotify` process responds to files being placed in the watched
   directory by uploading them to Amazon S3.  This process is
   implemented using
@@ -77,7 +77,7 @@ provided in the project.
 Login to the web server.
 
 ```
-docker run -it -v '/tmp/scratch:/tmp' docker_web_1 /bin/bash
+docker run -it -v "$HOME/scratch:/tmp/scratch" docker_web_1 /bin/bash
 ```
 
 A script ([build](build)) has been provided that you can run after
@@ -299,14 +299,8 @@ To build the package in your development environment you'll need
 `automake`, `make`, and `autoconf`.  You __do not__ need these tools
 on the target server.
 
-```
-./bootstrap
-./configure
-make && make dist
-```
-
 The `configure` script will check project dependencies including
-require Perl module (and their versions). Normally, if dependencies
+required Perl module (and their versions). Normally, if dependencies
 are missing the configure step will fail.  You can disable dependency
 checking using the `--disable-deps` option to `configure`.
 
@@ -317,29 +311,38 @@ You can disable syntax checking when you build the
 distribution tarball using the `--enable-rpm-build-mode` option.
 
 ```
+./bootstrap
 ./configure --disable-deps --enable-rpm-build-mode
+make && make dist
 ```
 
-If you do want to install the dependencies locally you can install
-them using `cpanm` as shown below.
+> Note: Don't worry about the other configuration options at this point. The point
+  of this step is to create a distribution tarball. When we build in
+  the container, we will set specific configuration values
 
-_Note that `make cpan`  will install the *latest* version of all
+After running `make dist` you'll havve a tarball that you can copy to
+the container to complete the build.
+
+If you do want to install the dependencies locally in order to
+properly work on the project you can install them using `cpanm` as
+shown below. Remember however, installing the modules locally only
+serves the purpose of allowing syntax checking to work. _If you run
+locally with a different operating system or differnt version of Perl
+you may find edge cases where syntax checking provides false results._
+
+> Note: `make cpan`  will install the *latest* version of all
 of the dependencies, possibly upgrading modules you already have
 installed!  If you do not want this to occur, you should note the
 missing dependencies one by one and install them individually._
 
+Install `cpanm` then install depdencies:
 
 ```
 make cpanm && make cpan
 ```
 
-> Note that you do not need to worry about the configuration at this
-  point, we are simply creating a tarball. When we build in the
-  container, we will set specific configuration values
-
-This will create a tarball that you can now copy to the container.
-
-Unpack the tarball and configure the software with optional arguments.
+Once you have created the distribution tarball and copied it to the
+container, unpack the tarball and run `configure` with optional arguments.
 
 | Option | Description |
 | ------ | ----------- |
@@ -355,6 +358,7 @@ Unpack the tarball and configure the software with optional arguments.
 | `--enable-apache-log-console` | output Apache log files to console |
 | `--with-apache-loglevel`  | configure Apache's `LogLevel` directive |
 
+
 ```
 $ tar xfvz perl-upload-cgi-1.0.0.tar.gz
 $ cd perl-upload-cgi
@@ -367,12 +371,11 @@ $ ./configure --localstatedir=/var --sysconfdir=/etc \
     --with-profile=localstack
 ```
 
-
 Once `configure` successfully completes, you can now build and install
 the software.
 
 ```
-make && sudo make install
+make && make install
 ```
 
 The build tree will look something like this:
